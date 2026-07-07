@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { SnippetButton } from './SnippetButton'
 import { MarkdownNotes } from './MarkdownNotes'
+import { VariablesPanel } from './VariablesPanel'
 import { useDragSort } from '../hooks/useDragSort'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
@@ -118,6 +119,11 @@ export function CardEditor(): JSX.Element {
           />
         )}
       </div>
+
+      {/* Deck-level variables ({{placeholder}} substitution, #7). Scoped to the
+          whole deck, shown here in the editor so authors define values next to
+          the snippets that use them. */}
+      <VariablesPanel />
 
       {/* Snippets */}
       <div>

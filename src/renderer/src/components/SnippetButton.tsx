@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
+import { classifyVariables, renderSnippet } from '@shared/variables'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
 
 interface Props {
@@ -44,10 +45,16 @@ export function SnippetButton({
   const removeSnippet = useDeckStore((s) => s.removeSnippet)
   const copySnippet = useDeckStore((s) => s.copySnippet)
   const clearLastCopied = useDeckStore((s) => s.clearLastCopied)
+  // Deck-level variables drive both drag-out substitution and the “uses…” hint.
+  const variables = useDeckStore((s) => s.deck?.variables)
   // Flash "Copied ✓" whenever this snippet is the last-copied one — whether the
   // copy came from this button or from a number-key hotkey.
   const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
   const [expanded, setExpanded] = useState(false)
+
+  // Which `{{variables}}` this snippet references, split into filled vs unset.
+  const { used, missing } = classifyVariables(snippet.content, variables)
+  const referenced = [...used, ...missing]
 
   // Safety net: if this button unmounts (e.g. card switch) while flashing, make
   // sure we don't leave a stale marker pointing at us.
@@ -64,8 +71,9 @@ export function SnippetButton({
   }
 
   function onDragStartOut(e: React.DragEvent): void {
-    // Native drag-out: dropping onto any text field pastes the content.
-    e.dataTransfer.setData('text/plain', snippet.content)
+    // Native drag-out: dropping onto any text field pastes the content. Apply
+    // the same `{{variable}}` substitution as copy so drag and copy agree (#7).
+    e.dataTransfer.setData('text/plain', renderSnippet(snippet.content, variables))
     e.dataTransfer.effectAllowed = 'copy'
   }
 
@@ -133,6 +141,35 @@ export function SnippetButton({
           ✕
         </button>
       </div>
+
+      {/* Referenced-variable chips (#7): shows which `{{variables}}` this snippet
+          uses; unset ones are flagged amber so the author knows to fill them. */}
+      {referenced.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border-t border-deck-border px-2 py-1.5">
+          <span className="mr-0.5 text-[10px] uppercase tracking-wide text-deck-muted">uses</span>
+          {referenced.map((name) => {
+            const isMissing = missing.includes(name)
+            return (
+              <span
+                key={name}
+                className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                  isMissing
+                    ? 'bg-amber-500/15 text-amber-500'
+                    : 'bg-deck-panel text-deck-muted'
+                }`}
+                title={
+                  isMissing
+                    ? `{{${name}}} has no value — it will show a placeholder marker when copied. Set it in the Variables panel.`
+                    : `{{${name}}} → defined in Variables`
+                }
+              >
+                {name}
+                {isMissing && ' ⚠'}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {/* Content preview / editor */}
       {expanded ? (

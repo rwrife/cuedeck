@@ -19,9 +19,10 @@ import {
 } from '../src/shared/deck'
 
 /**
- * Format spec tests (#13): a known-good example validates against BOTH the
- * published JSON Schema and the hand-rolled validateDeck; several malformed
- * inputs fail; and an old v1 deck normalizes unchanged.
+ * Format spec tests (#13, extended for #7): a known-good example validates
+ * against BOTH the published JSON Schema and the hand-rolled validateDeck;
+ * several malformed inputs fail; and an old v1 deck migrates forward to v2 with
+ * an empty `variables` map.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -67,6 +68,11 @@ describe('JSON Schema ↔ TS validator lockstep', () => {
     if (result.ok) {
       expect(result.deck.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
       expect(result.deck.cards).toHaveLength(3)
+      // The v2 example carries a variables map used by `{{placeholder}}` snippets.
+      expect(result.deck.variables).toEqual({
+        demoEmail: 'ada@example.com',
+        projectName: 'Acme Rollout'
+      })
     }
   })
 
@@ -128,20 +134,20 @@ describe('validateDeck — malformed inputs are rejected', () => {
   })
 })
 
-describe('normalizeDeck — old decks normalize unchanged', () => {
-  it('leaves a valid current-version deck byte-identical', () => {
+describe('normalizeDeck — current-version decks & v1 migration', () => {
+  it('leaves a valid current-version (v2) deck deep-equal and byte-identical', () => {
     const before = JSON.stringify(exampleDeck)
     const normalized = normalizeDeck(exampleDeck)
     // Deep-equal to the original object...
     expect(normalized).toEqual(exampleDeck)
-    // ...and serializes identically (no added/removed keys, e.g. no `variables`).
+    // ...and serializes identically (same keys in the same order, variables kept).
     expect(JSON.stringify(normalized)).toBe(before)
-    expect('variables' in normalized).toBe(false)
+    expect('variables' in normalized).toBe(true)
     // And the result is itself valid.
     expect(isDeck(normalized)).toBe(true)
   })
 
-  it('a minimal v1 deck (no variables) round-trips unchanged', () => {
+  it('migrates a v1 deck (no variables) forward to v2 with an empty map', () => {
     const v1: Deck = {
       id: 'deck-1',
       name: 'Legacy Deck',
@@ -151,8 +157,32 @@ describe('normalizeDeck — old decks normalize unchanged', () => {
       schemaVersion: 1
     }
     const normalized = normalizeDeck(v1)
-    expect(normalized).toEqual(v1)
-    expect(JSON.stringify(normalized)).toBe(JSON.stringify(v1))
+    // Everything else is preserved; only the version is upgraded and an empty
+    // variables map is added (the documented v1→v2 migration).
+    expect(normalized.id).toBe(v1.id)
+    expect(normalized.name).toBe(v1.name)
+    expect(normalized.cards).toEqual(v1.cards)
+    expect(normalized.createdAt).toBe(v1.createdAt)
+    expect(normalized.updatedAt).toBe(v1.updatedAt)
+    expect(normalized.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    expect(normalized.variables).toEqual({})
+    // The migrated deck is valid and matches the published (v2) schema.
+    expect(isDeck(normalized)).toBe(true)
+    expect(validateSchema(normalized)).toBe(true)
+  })
+
+  it('is idempotent: normalizing a migrated deck again is a no-op', () => {
+    const once = normalizeDeck({
+      id: 'deck-1',
+      name: 'Legacy Deck',
+      cards: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-02T00:00:00.000Z',
+      schemaVersion: 1
+    })
+    const twice = normalizeDeck(once)
+    expect(twice).toEqual(once)
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(once))
   })
 })
 
@@ -170,6 +200,8 @@ describe('normalizeDeck — repairs loose input', () => {
     expect(normalized.cards[0].id.length).toBeGreaterThan(0)
     expect(normalized.cards[0].notes).toBe('')
     expect(normalized.cards[0].snippets[0].id.length).toBeGreaterThan(0)
+    // Loose input with no variables still gets the v2 empty map.
+    expect(normalized.variables).toEqual({})
     // The repaired deck is fully valid.
     expect(isDeck(normalized)).toBe(true)
   })
@@ -204,6 +236,8 @@ describe('createEmptyDeck', () => {
     expect(deck.cards).toHaveLength(0)
     expect(deck.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
     expect(deck.createdAt).toBe(deck.updatedAt)
+    // New decks start with an empty variables map (schema v2).
+    expect(deck.variables).toEqual({})
     expect(isDeck(deck)).toBe(true)
     // A freshly-created deck validates against the published schema too.
     expect(validateSchema(deck)).toBe(true)
