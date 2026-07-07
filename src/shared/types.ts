@@ -20,7 +20,13 @@ export interface Snippet {
 export interface CueCard {
   id: string
   title: string
-  /** Freeform talking points / script for this beat. Plain text (markdown-friendly). */
+  /**
+   * Freeform talking points / script for this beat, authored in a safe subset of
+   * Markdown (headings, bold/italic, inline code, bullet/ordered lists, and
+   * `- [ ]` task checkboxes). Stored as raw Markdown text; rendered to sanitized
+   * HTML in read/presenter contexts (see `src/shared/markdown.ts`). Plain text is
+   * a valid subset, so pre-Markdown notes round-trip unchanged.
+   */
   notes: string
   snippets: Snippet[]
 }

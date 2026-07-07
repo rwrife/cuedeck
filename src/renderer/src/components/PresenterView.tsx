@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { positionLabel } from '@shared/presenter'
+import { MarkdownNotes } from './MarkdownNotes'
 
 /**
  * A single large, read-only copy button used in Presenter Mode.
@@ -137,9 +138,10 @@ export function PresenterView(): JSX.Element {
           </h1>
 
           {card.notes.trim() ? (
-            <p className="whitespace-pre-wrap text-lg leading-relaxed text-deck-text">
-              {card.notes}
-            </p>
+            <MarkdownNotes
+              source={card.notes}
+              className="text-lg leading-relaxed text-deck-text"
+            />
           ) : (
             <p className="text-base italic text-deck-muted">No talking points for this card.</p>
           )}
