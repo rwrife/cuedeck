@@ -1,14 +1,24 @@
 import { useDeckStore } from '../store/deckStore'
+import { useDragSort } from '../hooks/useDragSort'
+
+/** Private drag type marking an internal card-reorder drag (see useDragSort). */
+const CARD_DND_TYPE = 'application/x-cuedeck-card'
 
 /**
- * The left-pane running order. Click to switch active card, add new cards.
- * (Drag-to-reorder is handled in a dedicated issue.)
+ * The left-pane running order. Click to switch active card, add new cards,
+ * and drag rows (by the grip) to reorder the running order.
  */
 export function CardList(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const activeCardId = useDeckStore((s) => s.activeCardId)
   const setActiveCard = useDeckStore((s) => s.setActiveCard)
   const addCard = useDeckStore((s) => s.addCard)
+  const reorderCards = useDeckStore((s) => s.reorderCards)
+
+  const { dragIndex, overIndex, getSourceProps, getTargetProps } = useDragSort(
+    CARD_DND_TYPE,
+    reorderCards
+  )
 
   return (
     <div className="flex h-full flex-col">
@@ -25,36 +35,59 @@ export function CardList(): JSX.Element {
         </button>
       </div>
       <ul className="flex-1 overflow-auto px-2 pb-2">
-        {deck.cards.map((card, i) => (
-          <li key={card.id}>
-            <button
-              onClick={() => setActiveCard(card.id)}
-              className={`mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
-                activeCardId === card.id
-                  ? 'bg-deck-accent text-white'
-                  : 'text-deck-text hover:bg-deck-card'
-              }`}
+        {deck.cards.map((card, i) => {
+          const isActive = activeCardId === card.id
+          const isDragging = dragIndex === i
+          const isDropTarget = overIndex === i && dragIndex !== null && dragIndex !== i
+          const dropAbove = isDropTarget && (dragIndex as number) > i
+          const dropBelow = isDropTarget && (dragIndex as number) < i
+          return (
+            <li
+              key={card.id}
+              {...getTargetProps(i)}
+              className={`relative ${isDragging ? 'opacity-40' : ''}`}
             >
-              <span
-                className={`text-xs ${
-                  activeCardId === card.id ? 'text-white/70' : 'text-deck-muted'
+              {/* Insertion indicator */}
+              {dropAbove && (
+                <span className="pointer-events-none absolute -top-0.5 left-2 right-2 h-0.5 rounded bg-deck-accent" />
+              )}
+              {dropBelow && (
+                <span className="pointer-events-none absolute -bottom-0.5 left-2 right-2 h-0.5 rounded bg-deck-accent" />
+              )}
+              <button
+                onClick={() => setActiveCard(card.id)}
+                className={`mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
+                  isActive ? 'bg-deck-accent text-white' : 'text-deck-text hover:bg-deck-card'
                 }`}
               >
-                {i + 1}
-              </span>
-              <span className="truncate">{card.title || 'Untitled'}</span>
-              {card.snippets.length > 0 && (
                 <span
-                  className={`ml-auto rounded-full px-1.5 text-[10px] ${
-                    activeCardId === card.id ? 'bg-white/20' : 'bg-deck-border text-deck-muted'
+                  {...getSourceProps(i)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`cursor-grab select-none text-xs active:cursor-grabbing ${
+                    isActive ? 'text-white/60' : 'text-deck-muted'
                   }`}
+                  title="Drag to reorder"
+                  aria-hidden="true"
                 >
-                  {card.snippets.length}
+                  ⠿
                 </span>
-              )}
-            </button>
-          </li>
-        ))}
+                <span className={`text-xs ${isActive ? 'text-white/70' : 'text-deck-muted'}`}>
+                  {i + 1}
+                </span>
+                <span className="truncate">{card.title || 'Untitled'}</span>
+                {card.snippets.length > 0 && (
+                  <span
+                    className={`ml-auto rounded-full px-1.5 text-[10px] ${
+                      isActive ? 'bg-white/20' : 'bg-deck-border text-deck-muted'
+                    }`}
+                  >
+                    {card.snippets.length}
+                  </span>
+                )}
+              </button>
+            </li>
+          )
+        })}
         {deck.cards.length === 0 && (
           <p className="px-3 py-6 text-center text-sm text-deck-muted">
             No cards yet. Add your first beat.

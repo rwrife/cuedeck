@@ -1,22 +1,45 @@
 import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
+import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
 
 interface Props {
   cardId: string
   snippet: Snippet
   index: number
+  /** Drag-source handlers for the reorder grip (from useDragSort). */
+  sourceHandlers: DragSourceHandlers
+  /** Drop-target handlers for the row body (from useDragSort). */
+  targetHandlers: DropTargetHandlers
+  /** Row is the current drop target; render an insertion indicator. */
+  dropAbove: boolean
+  dropBelow: boolean
+  /** Row is the one being dragged; dim it. */
+  dragging: boolean
 }
 
 /**
  * The core interaction unit. Each snippet is:
  *  - editable (label + content)
  *  - one-click copy to clipboard (with a "Copied ✓" flash)
- *  - draggable: drag the handle straight into another app's text field
+ *  - draggable OUT: drag the numbered handle straight into another app's field
+ *  - reorderable: drag the dedicated grip (⠿) to sort within the card
  *
- * The number badge (1..9) hints at the future keyboard-copy hotkey.
+ * The two drags are deliberately separate affordances with separate data:
+ * the numbered handle emits `text/plain` (external paste target), while the
+ * reorder grip uses a private MIME type via `sortHandlers`. This keeps
+ * drag-out into other apps working while enabling internal sorting.
  */
-export function SnippetButton({ cardId, snippet, index }: Props): JSX.Element {
+export function SnippetButton({
+  cardId,
+  snippet,
+  index,
+  sourceHandlers,
+  targetHandlers,
+  dropAbove,
+  dropBelow,
+  dragging
+}: Props): JSX.Element {
   const updateSnippet = useDeckStore((s) => s.updateSnippet)
   const removeSnippet = useDeckStore((s) => s.removeSnippet)
   const copySnippet = useDeckStore((s) => s.copySnippet)
@@ -40,23 +63,44 @@ export function SnippetButton({ cardId, snippet, index }: Props): JSX.Element {
     void copySnippet(cardId, snippet.id)
   }
 
-  function onDragStart(e: React.DragEvent): void {
+  function onDragStartOut(e: React.DragEvent): void {
     // Native drag-out: dropping onto any text field pastes the content.
     e.dataTransfer.setData('text/plain', snippet.content)
     e.dataTransfer.effectAllowed = 'copy'
   }
 
   return (
-    <div className="rounded-lg border border-deck-border bg-deck-card">
-      {/* Header row: drag handle, label, copy, expand, delete */}
+    <div
+      {...targetHandlers}
+      className={`relative rounded-lg border border-deck-border bg-deck-card ${
+        dragging ? 'opacity-40' : ''
+      }`}
+    >
+      {/* Insertion indicators for reordering */}
+      {dropAbove && (
+        <span className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded bg-deck-accent" />
+      )}
+      {dropBelow && (
+        <span className="pointer-events-none absolute -bottom-1 left-0 right-0 h-0.5 rounded bg-deck-accent" />
+      )}
+
+      {/* Header row: reorder grip, drag-out handle, label, copy, expand, delete */}
       <div className="flex items-center gap-2 p-2">
         <span
+          {...sourceHandlers}
+          className="cursor-grab select-none px-1 text-deck-muted active:cursor-grabbing"
+          title="Drag to reorder"
+          aria-hidden="true"
+        >
+          ⠿
+        </span>
+        <span
           draggable
-          onDragStart={onDragStart}
+          onDragStart={onDragStartOut}
           className="cursor-grab select-none rounded bg-deck-panel px-2 py-1 text-xs text-deck-muted active:cursor-grabbing"
           title="Drag me into your demo app"
         >
-          {index + 1} ⠿
+          {index + 1} ↗
         </span>
         <input
           value={snippet.label}
