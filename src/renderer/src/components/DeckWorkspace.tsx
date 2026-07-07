@@ -13,6 +13,7 @@ export function DeckWorkspace(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const saving = useDeckStore((s) => s.saving)
   const closeDeck = useDeckStore((s) => s.closeDeck)
+  const exportDeck = useDeckStore((s) => s.exportDeck)
   const [pinned, setPinned] = useState(false)
 
   // Demo hotkeys: 1–9 copy the active card's snippets, ←/→ change cards.
@@ -44,17 +45,26 @@ export function DeckWorkspace(): JSX.Element {
             {saving ? 'Saving…' : 'Saved'}
           </span>
         </div>
-        <button
-          onClick={togglePin}
-          className={`rounded px-3 py-1 text-sm transition ${
-            pinned
-              ? 'bg-deck-accent text-white'
-              : 'text-deck-muted hover:bg-deck-card hover:text-deck-text'
-          }`}
-          title="Keep window on top during your demo"
-        >
-          📌 {pinned ? 'Pinned' : 'Pin on top'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => exportDeck(deck.id)}
+            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
+            title="Export this deck to a .json file"
+          >
+            Export
+          </button>
+          <button
+            onClick={togglePin}
+            className={`rounded px-3 py-1 text-sm transition ${
+              pinned
+                ? 'bg-deck-accent text-white'
+                : 'text-deck-muted hover:bg-deck-card hover:text-deck-text'
+            }`}
+            title="Keep window on top during your demo"
+          >
+            📌 {pinned ? 'Pinned' : 'Pin on top'}
+          </button>
+        </div>
       </header>
 
       {/* Body */}

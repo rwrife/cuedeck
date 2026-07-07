@@ -14,6 +14,7 @@ If you give software demos, you probably script them: what to click, what to say
 - **Talking-point notes** per card.
 - **Snippets** — labeled text blobs with a big **Copy** button and a **drag handle** so you can drop them straight into the target app.
 - **Pin-on-top** presenter mode so the deck floats above your demo window.
+- **Import / export** decks as `.json` files via native OS dialogs — back them up, commit them to a repo, or share with a teammate.
 
 ## Concepts
 
@@ -76,7 +77,7 @@ Decks are stored as individual JSON files under Electron's `userData` directory:
 - **macOS:** `~/Library/Application Support/cuedeck/decks/`
 - **Linux:** `~/.config/cuedeck/decks/`
 
-Each deck is human-readable JSON, so export/backup is just a file copy.
+Each deck is human-readable JSON, so export/backup is just a file copy. You can also use **Export** (deck picker or workspace top bar) to save a deck anywhere via a native save dialog, and **Import…** to load a deck file back in — imported decks are validated and assigned a fresh id so they never collide with existing ones.
 
 ## Roadmap
 

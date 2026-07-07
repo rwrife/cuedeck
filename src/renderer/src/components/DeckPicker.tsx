@@ -9,6 +9,10 @@ export function DeckPicker(): JSX.Element {
   const openDeck = useDeckStore((s) => s.openDeck)
   const createDeck = useDeckStore((s) => s.createDeck)
   const deleteDeck = useDeckStore((s) => s.deleteDeck)
+  const exportDeck = useDeckStore((s) => s.exportDeck)
+  const importDeck = useDeckStore((s) => s.importDeck)
+  const statusMessage = useDeckStore((s) => s.statusMessage)
+  const setStatusMessage = useDeckStore((s) => s.setStatusMessage)
   const [newName, setNewName] = useState('')
 
   async function handleCreate(): Promise<void> {
@@ -41,7 +45,27 @@ export function DeckPicker(): JSX.Element {
         >
           Create
         </button>
+        <button
+          onClick={importDeck}
+          className="rounded-lg border border-deck-border bg-deck-panel px-5 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
+          title="Import a deck from a .json file"
+        >
+          Import…
+        </button>
       </div>
+
+      {statusMessage && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 text-sm">
+          <span className="min-w-0 break-words text-deck-text">{statusMessage}</span>
+          <button
+            onClick={() => setStatusMessage(null)}
+            className="shrink-0 rounded px-1.5 text-deck-muted transition hover:text-deck-text"
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-deck-muted">
@@ -66,8 +90,15 @@ export function DeckPicker(): JSX.Element {
                   </div>
                 </button>
                 <button
+                  onClick={() => exportDeck(s.id)}
+                  className="ml-3 rounded px-2 py-1 text-xs text-deck-muted opacity-0 transition hover:text-deck-accent group-hover:opacity-100"
+                  title="Export deck to a .json file"
+                >
+                  Export
+                </button>
+                <button
                   onClick={() => deleteDeck(s.id)}
-                  className="ml-3 rounded px-2 py-1 text-xs text-deck-muted opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+                  className="ml-1 rounded px-2 py-1 text-xs text-deck-muted opacity-0 transition hover:text-red-400 group-hover:opacity-100"
                   title="Delete deck"
                 >
                   Delete
