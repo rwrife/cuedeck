@@ -6,6 +6,8 @@ import { type DeckMode, toggleMode as flipMode } from '@shared/presenter'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
+import { useSettingsStore } from './settingsStore'
+import { playCopyChime } from '../lib/copySound'
 
 /**
  * Generate a reasonably-unique id in the renderer. Delegates to the shared
@@ -165,8 +167,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
       // once touched, persists in the upgraded shape. `null` stays `null`.
       let deck: Deck | null = null
       if (loaded) {
-        const isCurrent =
-          validateDeck(loaded).ok && loaded.schemaVersion === CURRENT_SCHEMA_VERSION
+        const isCurrent = validateDeck(loaded).ok && loaded.schemaVersion === CURRENT_SCHEMA_VERSION
         deck = isCurrent ? loaded : normalizeDeck(loaded)
       }
       set({
@@ -282,6 +283,20 @@ export const useDeckStore = create<DeckState>((set, get) => {
       const rendered = renderSnippet(snippet.content, deck?.variables)
       await window.cuedeck.clipboard.write(rendered)
 
+      // Copy-feedback preferences (#8): the flash and sound are independently
+      // toggleable. Read the live settings so changes take effect immediately.
+      const { copyFlash, copySound } = useSettingsStore.getState().settings
+
+      if (copySound) playCopyChime()
+
+      if (!copyFlash) {
+        // Feedback flash disabled: make sure no stale marker lingers and skip
+        // scheduling a new one.
+        if (copyFlashTimer) clearTimeout(copyFlashTimer)
+        if (get().lastCopiedSnippetId !== null) set({ lastCopiedSnippetId: null })
+        return
+      }
+
       // Retrigger the flash even if the same snippet is copied twice in a row.
       set({ lastCopiedSnippetId: null })
       set({ lastCopiedSnippetId: snippetId })
@@ -322,9 +337,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
       mutate((d) => ({
         ...d,
         cards: d.cards.map((c) =>
-          c.id === cardId
-            ? { ...c, snippets: c.snippets.filter((s) => s.id !== snippetId) }
-            : c
+          c.id === cardId ? { ...c, snippets: c.snippets.filter((s) => s.id !== snippetId) } : c
         )
       })),
 

@@ -2,8 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/*
+ * Theme tokens (#8). The `deck-*` Tailwind colors resolve to these CSS custom
+ * properties (see tailwind.config.js), so switching the `data-theme` attribute
+ * on <html> re-themes every existing `bg-deck-*` / `text-deck-*` utility with no
+ * markup changes. The light theme uses hand-picked, legible values rather than
+ * inverted dark colors.
+ *
+ * `--deck-font-scale` is the presenter/notes font multiplier driven by the
+ * font-size preference; it defaults to 1 (no scaling).
+ */
+:root,
+[data-theme='dark'] {
   color-scheme: dark;
+
+  --deck-bg: #0f1117;
+  --deck-panel: #171a23;
+  --deck-card: #1e222d;
+  --deck-border: #2a2f3d;
+  --deck-accent: #6366f1;
+  --deck-accent-hover: #818cf8;
+  --deck-text: #e5e7eb;
+  --deck-muted: #9ca3af;
+
+  --deck-scrollbar-thumb: #2a2f3d;
+  --deck-scrollbar-thumb-hover: #3a4152;
+  --deck-code-bg: #1e222d;
+  --deck-code-border: #2a2f3d;
+
+  --deck-font-scale: 1;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* A real light theme: warm-neutral surfaces, dark slate text, indigo accent
+     tuned slightly darker so it stays legible on light backgrounds. */
+  --deck-bg: #f5f6f8;
+  --deck-panel: #ffffff;
+  --deck-card: #ffffff;
+  --deck-border: #d7dbe3;
+  --deck-accent: #4f46e5;
+  --deck-accent-hover: #4338ca;
+  --deck-text: #1f2430;
+  --deck-muted: #5c6470;
+
+  --deck-scrollbar-thumb: #cdd2db;
+  --deck-scrollbar-thumb-hover: #b4bbc7;
+  --deck-code-bg: #eef0f4;
+  --deck-code-border: #d7dbe3;
 }
 
 html,
@@ -20,8 +67,8 @@ body {
     'Segoe UI',
     Roboto,
     sans-serif;
-  background: #0f1117;
-  color: #e5e7eb;
+  background: var(--deck-bg);
+  color: var(--deck-text);
   overflow: hidden;
 }
 
@@ -31,11 +78,11 @@ body {
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2a2f3d;
+  background: var(--deck-scrollbar-thumb);
   border-radius: 6px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a4152;
+  background: var(--deck-scrollbar-thumb-hover);
 }
 
 /*
@@ -103,17 +150,17 @@ body {
 .cuedeck-md li.task-item input[type='checkbox'] {
   position: relative;
   top: 0.15em;
-  accent-color: #6366f1;
+  accent-color: var(--deck-accent);
 }
 .cuedeck-md li.task-checked {
-  color: #9ca3af;
+  color: var(--deck-muted);
   text-decoration: line-through;
 }
 .cuedeck-md code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
-  background: #1e222d;
-  border: 1px solid #2a2f3d;
+  background: var(--deck-code-bg);
+  border: 1px solid var(--deck-code-border);
   border-radius: 4px;
   padding: 0.1em 0.35em;
 }

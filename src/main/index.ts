@@ -1,8 +1,10 @@
-import { app, BrowserWindow, ipcMain, clipboard, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard, shell, nativeTheme } from 'electron'
 import { join } from 'path'
 import { IPC } from '../shared/ipc'
 import { PRESENTER_WINDOW_SIZE } from '../shared/presenter'
+import { resolveTheme } from '../shared/settings'
 import { registerDeckHandlers } from './deckStore'
+import { getSettingsSync, initSettings, registerSettingsHandlers } from './settingsStore'
 
 const isDev = !app.isPackaged
 
@@ -15,13 +17,18 @@ let mainWindow: BrowserWindow | null = null
 let prePresenterState: { bounds: Electron.Rectangle; alwaysOnTop: boolean } | null = null
 
 function createWindow(): void {
+  // Match the initial window background to the saved theme so there's no
+  // light-on-dark (or dark-on-light) flash before the renderer paints.
+  const applied = resolveTheme(getSettingsSync().theme, nativeTheme.shouldUseDarkColors)
+  const backgroundColor = applied === 'light' ? '#f5f6f8' : '#0f1117'
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 760,
     minWidth: 640,
     minHeight: 480,
     show: false,
-    backgroundColor: '#0f1117',
+    backgroundColor,
     title: 'CueDeck',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -85,7 +92,12 @@ function registerCoreHandlers(): void {
           alwaysOnTop: win.isAlwaysOnTop()
         }
       }
-      win.setAlwaysOnTop(true, 'floating')
+      // Honor the user's "always-on-top by default" preference (#8): when it's
+      // off we leave the current on-top state untouched so presenting no longer
+      // force-pins the window. It defaults to on, preserving prior behavior.
+      if (getSettingsSync().alwaysOnTopDefault) {
+        win.setAlwaysOnTop(true, 'floating')
+      }
       // Keep the window anchored at its current top-left while it shrinks.
       const { x, y } = win.getBounds()
       win.setBounds({ x, y, ...PRESENTER_WINDOW_SIZE })
@@ -102,9 +114,13 @@ function registerCoreHandlers(): void {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Warm the settings cache before the window is created so the initial
+  // background color + always-on-top default reflect saved preferences.
+  await initSettings()
   registerCoreHandlers()
   registerDeckHandlers()
+  registerSettingsHandlers()
   createWindow()
 
   app.on('activate', () => {

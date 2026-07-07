@@ -135,16 +135,17 @@ export function PresenterView(): JSX.Element {
 
       {/* Card body */}
       {card ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-          <h1 className="text-2xl font-bold leading-tight">
-            {card.title || 'Untitled card'}
-          </h1>
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4"
+          // Scale the presenter's talking-point typography by the font-size
+          // preference (#8). Applied here (not on snippet buttons) so the demo
+          // controls stay a consistent, tappable size.
+          style={{ fontSize: 'calc(1rem * var(--deck-font-scale, 1))' }}
+        >
+          <h1 className="text-2xl font-bold leading-tight">{card.title || 'Untitled card'}</h1>
 
           {card.notes.trim() ? (
-            <MarkdownNotes
-              source={card.notes}
-              className="text-lg leading-relaxed text-deck-text"
-            />
+            <MarkdownNotes source={card.notes} className="text-lg leading-relaxed text-deck-text" />
           ) : (
             <p className="text-base italic text-deck-muted">No talking points for this card.</p>
           )}
