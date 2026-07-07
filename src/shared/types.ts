@@ -32,10 +32,11 @@ export interface CueCard {
 }
 
 /**
- * Optional named variables for a deck. Forward-compatible with snippet
- * variable substitution (#7): snippet content may reference `{{key}}` tokens
- * that resolve against this map. Absent on current v1 decks; when present it is
- * a flat string→string map.
+ * Named variables for a deck (snippet variable substitution, #7). Snippet
+ * content may reference `{{key}}` tokens that resolve against this map at copy /
+ * drag time. A flat string→string map; empty (`{}`) when the deck defines no
+ * variables. Introduced in schema v2; v1 decks are migrated forward with an
+ * empty map (see `normalizeDeck`).
  */
 export type DeckVariables = Record<string, string>
 
@@ -51,8 +52,10 @@ export interface Deck {
   /** Schema version for future migrations. */
   schemaVersion: number
   /**
-   * Optional named variables (forward-compat with #7). Omitted entirely on
-   * decks that don't use variables so existing v1 files round-trip unchanged.
+   * Named variables for `{{placeholder}}` substitution in snippet content (#7).
+   * Present on all schema-v2 decks (an empty `{}` when unused). Optional on the
+   * type only so that hand-written v1 fixtures and in-flight loose input remain
+   * assignable; `normalizeDeck` always fills it for persisted decks.
    */
   variables?: DeckVariables
 }
@@ -94,11 +97,18 @@ export interface ImportResult {
   error?: string
 }
 
-/** The current deck schema version emitted by this build. */
-export const CURRENT_SCHEMA_VERSION = 1
+/**
+ * The current deck schema version emitted by this build.
+ *
+ * - v1: original deck model (no variables).
+ * - v2: adds deck-level `variables` for snippet `{{placeholder}}` substitution
+ *   (#7). Older v1 decks are migrated forward on load (variables default to
+ *   `{}`); see `normalizeDeck`.
+ */
+export const CURRENT_SCHEMA_VERSION = 2
 
 /** Every schema version this build knows how to read (and normalize forward). */
-export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1]
+export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1, 2]
 
 /** Canonical file extension / naming convention for on-disk decks. */
 export const DECK_FILE_EXTENSION = '.cuedeck.json'

@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
+import { CURRENT_SCHEMA_VERSION } from '@shared/types'
 import { nextCardId } from '@shared/hotkeys'
 import { type DeckMode, toggleMode as flipMode } from '@shared/presenter'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
+import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
 
 /**
@@ -85,6 +87,28 @@ interface DeckState {
   removeSnippet: (cardId: string, snippetId: string) => void
   /** Move a snippet within a card from one position to another. */
   reorderSnippets: (cardId: string, fromIndex: number, toIndex: number) => void
+
+  // Deck-level variables (#7)
+  /**
+   * Set (or clear) a deck variable used for `{{placeholder}}` substitution in
+   * snippet content. An empty/whitespace value is kept as a defined-but-empty
+   * key so the editor can still surface it as “unfilled”.
+   */
+  setVariable: (name: string, value: string) => void
+  /** Delete a deck variable entirely. */
+  removeVariable: (name: string) => void
+  /**
+   * Rename a variable key, preserving its value. No-op when `to` is blank,
+   * unchanged, or already taken (the caller should validate/report). Does not
+   * rewrite `{{placeholders}}` in snippet content — renaming is a map-key change.
+   */
+  renameVariable: (from: string, to: string) => void
+  /**
+   * Add empty entries for every `{{variable}}` referenced anywhere in the deck
+   * that isn't already defined, so the user can fill them from one place.
+   * Returns the names that were added.
+   */
+  addReferencedVariables: () => string[]
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -134,10 +158,17 @@ export const useDeckStore = create<DeckState>((set, get) => {
     openDeck: async (id) => {
       set({ loading: true })
       const loaded = await window.cuedeck.decks.load(id)
-      // Route the loaded deck through the shared validator/normalizer. Valid
-      // decks pass through unchanged; a loose deck is repaired rather than
-      // rendering a broken shape. `null` (missing/unreadable) stays `null`.
-      const deck = loaded ? (validateDeck(loaded).ok ? loaded : normalizeDeck(loaded)) : null
+      // Route the loaded deck through the shared validator/normalizer. A deck
+      // that is already valid AND at the current schema version passes through
+      // unchanged; anything older (e.g. a v1 deck with no `variables`) or loose
+      // is migrated/repaired via normalizeDeck so it renders correctly and,
+      // once touched, persists in the upgraded shape. `null` stays `null`.
+      let deck: Deck | null = null
+      if (loaded) {
+        const isCurrent =
+          validateDeck(loaded).ok && loaded.schemaVersion === CURRENT_SCHEMA_VERSION
+        deck = isCurrent ? loaded : normalizeDeck(loaded)
+      }
       set({
         deck,
         loading: false,
@@ -245,7 +276,11 @@ export const useDeckStore = create<DeckState>((set, get) => {
         ?.snippets.find((s) => s.id === snippetId)
       if (!snippet) return
 
-      await window.cuedeck.clipboard.write(snippet.content)
+      // Substitute deck-level `{{variables}}` before the text hits the
+      // clipboard (#7). Missing variables are rendered as a visible marker by
+      // renderSnippet rather than shipping a raw `{{token}}`.
+      const rendered = renderSnippet(snippet.content, deck?.variables)
+      await window.cuedeck.clipboard.write(rendered)
 
       // Retrigger the flash even if the same snippet is copied twice in a row.
       set({ lastCopiedSnippetId: null })
@@ -301,6 +336,53 @@ export const useDeckStore = create<DeckState>((set, get) => {
           const snippets = move(c.snippets, fromIndex, toIndex)
           return snippets === c.snippets ? c : { ...c, snippets }
         })
-      }))
+      })),
+
+    setVariable: (name, value) => {
+      const key = name.trim()
+      if (!key) return
+      mutate((d) => ({ ...d, variables: { ...(d.variables ?? {}), [key]: value } }))
+    },
+
+    removeVariable: (name) =>
+      mutate((d) => {
+        const current = d.variables ?? {}
+        if (!(name in current)) return d
+        const next = { ...current }
+        delete next[name]
+        return { ...d, variables: next }
+      }),
+
+    renameVariable: (from, to) => {
+      const target = to.trim()
+      mutate((d) => {
+        const current = d.variables ?? {}
+        if (!target || target === from || !(from in current) || target in current) return d
+        // Rebuild preserving key order: swap the renamed key in place.
+        const next: Record<string, string> = {}
+        for (const [k, v] of Object.entries(current)) {
+          if (k === from) next[target] = v
+          else next[k] = v
+        }
+        return { ...d, variables: next }
+      })
+    },
+
+    addReferencedVariables: () => {
+      const { deck } = get()
+      if (!deck) return []
+      const referenced = collectReferencedVariables(
+        deck.cards.flatMap((c) => c.snippets.map((s) => s.content))
+      )
+      const current = deck.variables ?? {}
+      const added = referenced.filter((name) => !(name in current))
+      if (added.length === 0) return []
+      mutate((d) => {
+        const vars = { ...(d.variables ?? {}) }
+        for (const name of added) vars[name] = ''
+        return { ...d, variables: vars }
+      })
+      return added
+    }
   }
 })

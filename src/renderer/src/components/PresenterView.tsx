@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { positionLabel } from '@shared/presenter'
+import { renderSnippet } from '@shared/variables'
 import { MarkdownNotes } from './MarkdownNotes'
 
 /**
@@ -24,12 +25,14 @@ function PresenterSnippet({
 }): JSX.Element {
   const copySnippet = useDeckStore((s) => s.copySnippet)
   const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
+  // Deck variables for drag-out substitution (copy path substitutes in-store).
+  const variables = useDeckStore((s) => s.deck?.variables)
 
   // Only 1–9 get a keyboard-visible number badge (matching the copy hotkeys).
   const hotkeyNumber = index < 9 ? index + 1 : null
 
   function onDragStartOut(e: React.DragEvent): void {
-    e.dataTransfer.setData('text/plain', snippet.content)
+    e.dataTransfer.setData('text/plain', renderSnippet(snippet.content, variables))
     e.dataTransfer.effectAllowed = 'copy'
   }
 

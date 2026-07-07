@@ -5,7 +5,7 @@
   "description": "Canonical CueDeck deck file format. The top-level object is a single Deck, persisted as a `*.cuedeck.json` file. This schema is kept in lockstep with the authoritative TypeScript types in src/shared/types.ts and the shared validator in src/shared/deck.ts.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "cards", "createdAt", "updatedAt", "schemaVersion"],
+  "required": ["id", "name", "cards", "createdAt", "updatedAt", "schemaVersion", "variables"],
   "properties": {
     "id": {
       "type": "string",
@@ -33,9 +33,9 @@
     },
     "schemaVersion": {
       "type": "integer",
-      "description": "Deck schema version. Used for forward migrations.",
-      "enum": [1],
-      "const": 1
+      "description": "Deck schema version. Used for forward migrations. This schema describes the current emitted version (v2); older v1 decks are migrated forward on load by the shared validator/normalizer.",
+      "enum": [1, 2],
+      "const": 2
     },
     "variables": {
       "$ref": "#/$defs/deckVariables"
@@ -91,7 +91,7 @@
     },
     "deckVariables": {
       "type": "object",
-      "description": "Optional named variables (forward-compatible with snippet variable substitution, #7). Flat string→string map; omit entirely when unused.",
+      "description": "Deck-level named variables for snippet `{{placeholder}}` substitution (#7). Flat string→string map; `{}` when the deck defines no variables. Present on all schema-v2 decks.",
       "additionalProperties": { "type": "string" }
     }
   }

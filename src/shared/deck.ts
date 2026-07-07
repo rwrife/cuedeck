@@ -220,12 +220,15 @@ function normalizeVariables(input: unknown): DeckVariables | undefined {
 
 /**
  * Coerce arbitrary input into a well-formed {@link Deck}: fills defaults,
- * assigns missing ids, ensures timestamps, and upgrades `schemaVersion` to the
- * current version.
+ * assigns missing ids, ensures timestamps, upgrades `schemaVersion` to the
+ * current version, and migrates the deck forward.
  *
- * Behavior contract: a deck that is already valid at the current schema version
- * is returned byte-identical (same keys, same values, `variables` omitted when
- * absent), so existing v1 decks are untouched.
+ * Migration contract (#7): every normalized deck is at
+ * {@link CURRENT_SCHEMA_VERSION} and always carries a `variables` map. Older v1
+ * decks (which had no `variables` field) gain an empty `{}`; existing values are
+ * preserved and cleaned (non-string entries dropped). A deck that is already a
+ * well-formed current-version deck (v2, with a `variables` map) is returned
+ * deep-equal to its input, so re-normalizing is idempotent.
  */
 export function normalizeDeck(input: unknown): Deck {
   const rec = isRecord(input) ? input : {}
@@ -246,14 +249,10 @@ export function normalizeDeck(input: unknown): Deck {
     cards: Array.isArray(rec.cards) ? rec.cards.map(normalizeCard) : [],
     createdAt,
     updatedAt,
-    schemaVersion: CURRENT_SCHEMA_VERSION
-  }
-
-  // Only attach `variables` when the input actually had them, so decks that
-  // never used variables stay byte-identical after a normalize round-trip.
-  if (rec.variables !== undefined) {
-    const vars = normalizeVariables(rec.variables)
-    if (vars) deck.variables = vars
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    // v2 decks always carry a variables map. Preserve + clean any existing map;
+    // otherwise default to `{}` (this is the v1→v2 migration path).
+    variables: normalizeVariables(rec.variables) ?? {}
   }
 
   return deck
@@ -265,7 +264,8 @@ export function normalizeDeck(input: unknown): Deck {
 
 /**
  * Create a fresh, empty deck with the given name. Shared by the app and all
- * tooling (CLI / MCP) so new decks are created identically everywhere.
+ * tooling (CLI / MCP) so new decks are created identically everywhere. New decks
+ * are schema v2 and start with an empty `variables` map.
  */
 export function createEmptyDeck(name: string): Deck {
   const timestamp = nowIso()
@@ -275,6 +275,7 @@ export function createEmptyDeck(name: string): Deck {
     cards: [],
     createdAt: timestamp,
     updatedAt: timestamp,
-    schemaVersion: CURRENT_SCHEMA_VERSION
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    variables: {}
   }
 }
