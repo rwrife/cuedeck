@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
 import { nextCardId } from '@shared/hotkeys'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
+import { move } from '@shared/reorder'
 
 /**
  * Generate a reasonably-unique id in the renderer. Delegates to the shared
@@ -41,6 +42,8 @@ interface DeckState {
   setActiveCard: (cardId: string) => void
   /** Move the active card by a step in the running order (-1 prev, +1 next). */
   stepActiveCard: (step: -1 | 1) => void
+  /** Move a card from one position to another in the running order. */
+  reorderCards: (fromIndex: number, toIndex: number) => void
 
   // Clipboard
   /**
@@ -56,6 +59,8 @@ interface DeckState {
   addSnippet: (cardId: string) => void
   updateSnippet: (cardId: string, snippetId: string, patch: Partial<Omit<Snippet, 'id'>>) => void
   removeSnippet: (cardId: string, snippetId: string) => void
+  /** Move a snippet within a card from one position to another. */
+  reorderSnippets: (cardId: string, fromIndex: number, toIndex: number) => void
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -159,6 +164,12 @@ export const useDeckStore = create<DeckState>((set, get) => {
       if (next && next !== activeCardId) set({ activeCardId: next })
     },
 
+    reorderCards: (fromIndex, toIndex) =>
+      mutate((d) => {
+        const cards = move(d.cards, fromIndex, toIndex)
+        return cards === d.cards ? d : { ...d, cards }
+      }),
+
     copySnippet: async (cardId, snippetId) => {
       const { deck } = get()
       const snippet = deck?.cards
@@ -212,6 +223,16 @@ export const useDeckStore = create<DeckState>((set, get) => {
             ? { ...c, snippets: c.snippets.filter((s) => s.id !== snippetId) }
             : c
         )
+      })),
+
+    reorderSnippets: (cardId, fromIndex, toIndex) =>
+      mutate((d) => ({
+        ...d,
+        cards: d.cards.map((c) => {
+          if (c.id !== cardId) return c
+          const snippets = move(c.snippets, fromIndex, toIndex)
+          return snippets === c.snippets ? c : { ...c, snippets }
+        })
       }))
   }
 })

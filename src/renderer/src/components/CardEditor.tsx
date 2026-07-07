@@ -1,9 +1,13 @@
 import { useDeckStore } from '../store/deckStore'
 import { SnippetButton } from './SnippetButton'
+import { useDragSort } from '../hooks/useDragSort'
+
+/** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
+const SNIPPET_DND_TYPE = 'application/x-cuedeck-snippet'
 
 /**
  * Right-pane editor for the active card: title, talking-point notes,
- * and the list of copy/drag snippets.
+ * and the list of copy/drag snippets (reorderable via each snippet's grip).
  */
 export function CardEditor(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
@@ -11,8 +15,14 @@ export function CardEditor(): JSX.Element {
   const updateCard = useDeckStore((s) => s.updateCard)
   const removeCard = useDeckStore((s) => s.removeCard)
   const addSnippet = useDeckStore((s) => s.addSnippet)
+  const reorderSnippets = useDeckStore((s) => s.reorderSnippets)
 
   const card = deck.cards.find((c) => c.id === activeCardId)
+
+  const { dragIndex, overIndex, getSourceProps, getTargetProps } = useDragSort(
+    SNIPPET_DND_TYPE,
+    (from, to) => reorderSnippets(card!.id, from, to)
+  )
 
   if (!card) {
     return (
@@ -69,9 +79,22 @@ export function CardEditor(): JSX.Element {
           </button>
         </div>
         <div className="flex flex-col gap-3">
-          {card.snippets.map((snippet, i) => (
-            <SnippetButton key={snippet.id} cardId={card.id} snippet={snippet} index={i} />
-          ))}
+          {card.snippets.map((snippet, i) => {
+            const isDropTarget = overIndex === i && dragIndex !== null && dragIndex !== i
+            return (
+              <SnippetButton
+                key={snippet.id}
+                cardId={card.id}
+                snippet={snippet}
+                index={i}
+                sourceHandlers={getSourceProps(i)}
+                targetHandlers={getTargetProps(i)}
+                dragging={dragIndex === i}
+                dropAbove={isDropTarget && (dragIndex as number) > i}
+                dropBelow={isDropTarget && (dragIndex as number) < i}
+              />
+            )
+          })}
           {card.snippets.length === 0 && (
             <p className="rounded-lg border border-dashed border-deck-border p-6 text-center text-sm text-deck-muted">
               No snippets. Add the text blobs you paste during this step.
