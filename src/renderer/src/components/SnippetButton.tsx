@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 
@@ -19,13 +19,25 @@ interface Props {
 export function SnippetButton({ cardId, snippet, index }: Props): JSX.Element {
   const updateSnippet = useDeckStore((s) => s.updateSnippet)
   const removeSnippet = useDeckStore((s) => s.removeSnippet)
-  const [copied, setCopied] = useState(false)
+  const copySnippet = useDeckStore((s) => s.copySnippet)
+  const clearLastCopied = useDeckStore((s) => s.clearLastCopied)
+  // Flash "Copied ✓" whenever this snippet is the last-copied one — whether the
+  // copy came from this button or from a number-key hotkey.
+  const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
   const [expanded, setExpanded] = useState(false)
 
-  async function copy(): Promise<void> {
-    await window.cuedeck.clipboard.write(snippet.content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
+  // Safety net: if this button unmounts (e.g. card switch) while flashing, make
+  // sure we don't leave a stale marker pointing at us.
+  useEffect(() => {
+    return () => {
+      if (useDeckStore.getState().lastCopiedSnippetId === snippet.id) {
+        clearLastCopied(snippet.id)
+      }
+    }
+  }, [snippet.id, clearLastCopied])
+
+  function copy(): void {
+    void copySnippet(cardId, snippet.id)
   }
 
   function onDragStart(e: React.DragEvent): void {
