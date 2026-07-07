@@ -1,6 +1,10 @@
 /**
  * Shared domain types for CueDeck.
  * Used by both the main (Electron) and renderer (React) processes.
+ *
+ * These TypeScript types are the AUTHORITATIVE source of truth for the deck
+ * model. The published JSON Schema (schema/cuedeck.schema.json) and the shared
+ * validator (src/shared/deck.ts) are kept in lockstep with them.
  */
 
 /** A single labeled blob of text the user copies/drags into a demo target app. */
@@ -21,7 +25,15 @@ export interface CueCard {
   snippets: Snippet[]
 }
 
-/** A full demo script. Persisted as a single JSON file. */
+/**
+ * Optional named variables for a deck. Forward-compatible with snippet
+ * variable substitution (#7): snippet content may reference `{{key}}` tokens
+ * that resolve against this map. Absent on current v1 decks; when present it is
+ * a flat string→string map.
+ */
+export type DeckVariables = Record<string, string>
+
+/** A full demo script. Persisted as a single `*.cuedeck.json` file. */
 export interface Deck {
   id: string
   name: string
@@ -32,6 +44,11 @@ export interface Deck {
   updatedAt: string
   /** Schema version for future migrations. */
   schemaVersion: number
+  /**
+   * Optional named variables (forward-compat with #7). Omitted entirely on
+   * decks that don't use variables so existing v1 files round-trip unchanged.
+   */
+  variables?: DeckVariables
 }
 
 /** Lightweight deck descriptor for the deck-picker list. */
@@ -43,4 +60,19 @@ export interface DeckSummary {
   updatedAt: string
 }
 
+/**
+ * Result of validating unknown input against the {@link Deck} model.
+ * Either a successfully-typed deck or a list of human-readable errors.
+ */
+export type DeckValidationResult =
+  | { ok: true; deck: Deck }
+  | { ok: false; errors: string[] }
+
+/** The current deck schema version emitted by this build. */
 export const CURRENT_SCHEMA_VERSION = 1
+
+/** Every schema version this build knows how to read (and normalize forward). */
+export const SUPPORTED_SCHEMA_VERSIONS: readonly number[] = [1]
+
+/** Canonical file extension / naming convention for on-disk decks. */
+export const DECK_FILE_EXTENSION = '.cuedeck.json'
