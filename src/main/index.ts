@@ -1,11 +1,18 @@
 import { app, BrowserWindow, ipcMain, clipboard, shell } from 'electron'
 import { join } from 'path'
 import { IPC } from '../shared/ipc'
+import { PRESENTER_WINDOW_SIZE } from '../shared/presenter'
 import { registerDeckHandlers } from './deckStore'
 
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+
+/**
+ * Window state captured when entering Presenter Mode so it can be restored on
+ * exit. `null` while in normal edit mode.
+ */
+let prePresenterState: { bounds: Electron.Rectangle; alwaysOnTop: boolean } | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -59,6 +66,39 @@ function registerCoreHandlers(): void {
 
   ipcMain.handle(IPC.getAlwaysOnTop, () => {
     return mainWindow?.isAlwaysOnTop() ?? false
+  })
+
+  // Enter/exit Presenter Mode. Entering remembers the current bounds + on-top
+  // state, then shrinks the window to a compact size and pins it always-on-top.
+  // Exiting restores exactly what was captured on entry. Returns the resulting
+  // always-on-top state so the renderer can stay in sync.
+  ipcMain.handle(IPC.setPresenter, (_evt, present: boolean) => {
+    const win = mainWindow
+    if (!win) return false
+
+    if (present) {
+      // Capture once; a second "enter" while already presenting is a no-op so we
+      // never overwrite the remembered edit-mode bounds with compact ones.
+      if (!prePresenterState) {
+        prePresenterState = {
+          bounds: win.getBounds(),
+          alwaysOnTop: win.isAlwaysOnTop()
+        }
+      }
+      win.setAlwaysOnTop(true, 'floating')
+      // Keep the window anchored at its current top-left while it shrinks.
+      const { x, y } = win.getBounds()
+      win.setBounds({ x, y, ...PRESENTER_WINDOW_SIZE })
+      return win.isAlwaysOnTop()
+    }
+
+    // Exiting: restore the captured bounds + on-top state, if we have them.
+    if (prePresenterState) {
+      win.setBounds(prePresenterState.bounds)
+      win.setAlwaysOnTop(prePresenterState.alwaysOnTop, 'floating')
+      prePresenterState = null
+    }
+    return win.isAlwaysOnTop()
   })
 }
 
