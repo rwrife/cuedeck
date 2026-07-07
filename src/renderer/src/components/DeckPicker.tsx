@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
+import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 
 /**
  * Landing screen: pick an existing deck or create a new one.
@@ -26,9 +27,7 @@ export function DeckPicker(): JSX.Element {
     <div className="mx-auto flex h-full max-w-2xl flex-col gap-6 p-10">
       <header>
         <h1 className="text-3xl font-bold tracking-tight">🎬 CueDeck</h1>
-        <p className="mt-1 text-deck-muted">
-          Your demo cue cards + instant clipboard snippets.
-        </p>
+        <p className="mt-1 text-deck-muted">Your demo cue cards + instant clipboard snippets.</p>
       </header>
 
       <div className="flex gap-2">
@@ -51,6 +50,14 @@ export function DeckPicker(): JSX.Element {
           title="Import a deck from a .json file"
         >
           Import…
+        </button>
+        <button
+          onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
+          className="rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
+          title="Settings — theme, font size, and preferences"
+          aria-label="Open settings"
+        >
+          ⚙
         </button>
       </div>
 

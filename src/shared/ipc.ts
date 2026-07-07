@@ -18,7 +18,11 @@ export const IPC = {
   // Window / presenter mode
   toggleAlwaysOnTop: 'window:toggleAlwaysOnTop',
   getAlwaysOnTop: 'window:getAlwaysOnTop',
-  setPresenter: 'window:setPresenter'
+  setPresenter: 'window:setPresenter',
+
+  // Settings persistence (#8)
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

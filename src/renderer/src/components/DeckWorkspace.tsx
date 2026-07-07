@@ -5,6 +5,7 @@ import { isPresenterToggleKey } from '@shared/presenter'
 import { CardList } from './CardList'
 import { CardEditor } from './CardEditor'
 import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
+import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 import { PresenterView } from './PresenterView'
 
 /**
@@ -68,9 +69,7 @@ export function DeckWorkspace(): JSX.Element {
             ← Decks
           </button>
           <h1 className="font-semibold">{deck.name}</h1>
-          <span className="text-xs text-deck-muted">
-            {saving ? 'Saving…' : 'Saved'}
-          </span>
+          <span className="text-xs text-deck-muted">{saving ? 'Saving…' : 'Saved'}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -95,6 +94,14 @@ export function DeckWorkspace(): JSX.Element {
             title="Export this deck to a .json file"
           >
             Export
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
+            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
+            title="Settings — theme, font size, and preferences"
+            aria-label="Open settings"
+          >
+            ⚙
           </button>
           <button
             onClick={togglePin}

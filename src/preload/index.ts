@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { Deck, DeckSummary, ExportResult, ImportResult } from '../shared/types'
+import type { Settings } from '../shared/settings'
 
 /**
  * The typed API surface exposed to the renderer via contextBridge.
@@ -30,6 +31,16 @@ const api = {
      */
     setPresenter: (present: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC.setPresenter, present)
+  },
+  settings: {
+    /** Read the full, normalized settings object. */
+    get: (): Promise<Settings> => ipcRenderer.invoke(IPC.settingsGet),
+    /**
+     * Persist a (possibly partial) settings patch. The main process merges it
+     * onto the current settings, validates every field, writes settings.json,
+     * and resolves to the resulting full settings object.
+     */
+    set: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke(IPC.settingsSet, patch)
   }
 }
 
