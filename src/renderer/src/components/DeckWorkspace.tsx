@@ -6,6 +6,7 @@ import { CardList } from './CardList'
 import { CardEditor } from './CardEditor'
 import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
+import { OPEN_LIVE_CONTROL_EVENT } from './LiveControlPanel'
 import { PresenterView } from './PresenterView'
 
 /**
@@ -24,6 +25,7 @@ export function DeckWorkspace(): JSX.Element {
   const exportDeck = useDeckStore((s) => s.exportDeck)
   const toggleMode = useDeckStore((s) => s.toggleMode)
   const [pinned, setPinned] = useState(false)
+  const [liveActive, setLiveActive] = useState(false)
 
   // Demo hotkeys: 1–9 copy the active card's snippets, ←/→ change cards.
   useHotkeys()
@@ -44,6 +46,23 @@ export function DeckWorkspace(): JSX.Element {
 
   useEffect(() => {
     window.cuedeck.window.getAlwaysOnTop().then(setPinned)
+  }, [])
+
+  // Reflect the live-control active state on the header button. Poll lightly so
+  // the indicator stays in sync when the panel enables/revokes the bridge.
+  useEffect(() => {
+    let alive = true
+    function sync(): void {
+      window.cuedeck.live.getStatus().then((s) => {
+        if (alive) setLiveActive(s.enabled)
+      })
+    }
+    sync()
+    const id = window.setInterval(sync, 2000)
+    return () => {
+      alive = false
+      window.clearInterval(id)
+    }
   }, [])
 
   async function togglePin(): Promise<void> {
@@ -94,6 +113,18 @@ export function DeckWorkspace(): JSX.Element {
             title="Export this deck to a .json file"
           >
             Export
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new Event(OPEN_LIVE_CONTROL_EVENT))}
+            className={`flex items-center gap-2 rounded px-3 py-1 text-sm transition ${
+              liveActive
+                ? 'bg-green-600 text-white'
+                : 'text-deck-muted hover:bg-deck-card hover:text-deck-text'
+            }`}
+            title="Live Control — let an MCP client drive this demo (opt-in, loopback-only)"
+          >
+            🎛 Live
+            {liveActive && <span className="h-2 w-2 rounded-full bg-white" aria-hidden />}
           </button>
           <button
             onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}

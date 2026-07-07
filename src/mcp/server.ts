@@ -34,6 +34,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 import { DeckRepository, DeckRepositoryError, type DeckOutline } from '../cli/deckRepository'
 import type { DeckStore } from '../cli/store'
+import { registerLiveTools, type LiveToolsDeps } from './liveTools'
 
 /** Package metadata advertised to MCP clients on connect. */
 export const MCP_SERVER_NAME = 'cuedeck-mcp'
@@ -102,8 +103,17 @@ function guard<A>(fn: (args: A) => Promise<CallToolResult>): (args: A) => Promis
  * Build a fully-wired CueDeck MCP server over the given deck store. The returned
  * server is not yet connected to a transport — the caller connects a
  * `StdioServerTransport` (the bin) or drives handlers directly (tests).
+ *
+ * Registers two independently-usable tool families:
+ *  - **authoring** (#15): edit decks on disk (`create_deck_from_outline`, …).
+ *  - **live control** (#17): drive the *running* app (`live_*`).
+ *
+ * @param store    the deck store the authoring tools read/write.
+ * @param liveDeps optional injectable transport for the `live_*` tools; defaults
+ *   to the real descriptor-file + `fetch` bridge client. Tests pass a fake so
+ *   they can drive the live tools without a running app or sockets.
  */
-export function createCueDeckMcpServer(store: DeckStore): McpServer {
+export function createCueDeckMcpServer(store: DeckStore, liveDeps?: LiveToolsDeps): McpServer {
   const repo = new DeckRepository(store)
 
   const server = new McpServer(
@@ -426,6 +436,13 @@ export function createCueDeckMcpServer(store: DeckStore): McpServer {
       }
     }
   )
+
+  /* --------------------------- Live control (#17) ---------------------- */
+
+  // Runtime tools that drive a *running* app over its opt-in loopback bridge.
+  // Registered here so authoring + live tools are advertised together, but they
+  // stay independently usable (live tools fail gracefully when the app is off).
+  registerLiveTools(server, liveDeps)
 
   return server
 }
