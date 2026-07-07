@@ -21,7 +21,15 @@ const api = {
   },
   window: {
     toggleAlwaysOnTop: (): Promise<boolean> => ipcRenderer.invoke(IPC.toggleAlwaysOnTop),
-    getAlwaysOnTop: (): Promise<boolean> => ipcRenderer.invoke(IPC.getAlwaysOnTop)
+    getAlwaysOnTop: (): Promise<boolean> => ipcRenderer.invoke(IPC.getAlwaysOnTop),
+    /**
+     * Enter/exit Presenter Mode at the window level: entering shrinks the
+     * window to a compact size and pins it always-on-top (remembering the
+     * prior bounds + on-top state); exiting restores them. Resolves to the
+     * always-on-top state after the change.
+     */
+    setPresenter: (present: boolean): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.setPresenter, present)
   }
 }
 

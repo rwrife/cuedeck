@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
 import { nextCardId } from '@shared/hotkeys'
+import { type DeckMode, toggleMode as flipMode } from '@shared/presenter'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { move } from '@shared/reorder'
 
@@ -22,6 +23,12 @@ interface DeckState {
   loading: boolean
   saving: boolean
   /**
+   * Current workspace layout. `'edit'` is the full authoring workspace;
+   * `'present'` is the compact, read-only, always-on-top Presenter Mode used
+   * while running a live demo (#5).
+   */
+  mode: DeckMode
+  /**
    * Id of the snippet most recently copied, used to flash "Copied ✓" on the
    * targeted `SnippetButton` when a copy is triggered externally (e.g. via the
    * number-key hotkeys). Cleared back to null after the flash window.
@@ -41,6 +48,16 @@ interface DeckState {
   exportDeck: (id: string) => Promise<void>
   importDeck: () => Promise<void>
   setStatusMessage: (message: string | null) => void
+
+  // Presenter mode (#5)
+  /**
+   * Switch between edit and presenter layouts. Also drives the main-process
+   * window side effects (compact size + always-on-top on enter; restore on
+   * exit) via `window.cuedeck.window.setPresenter`.
+   */
+  setMode: (mode: DeckMode) => void
+  /** Convenience toggle between edit and presenter modes. */
+  toggleMode: () => void
 
   // Card ops
   addCard: () => void
@@ -105,6 +122,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     activeCardId: null,
     loading: false,
     saving: false,
+    mode: 'edit',
     lastCopiedSnippetId: null,
     statusMessage: null,
 
@@ -140,7 +158,14 @@ export const useDeckStore = create<DeckState>((set, get) => {
       await get().refreshSummaries()
     },
 
-    closeDeck: () => set({ deck: null, activeCardId: null }),
+    closeDeck: () => {
+      // Leaving a deck always returns to the full-chrome picker; make sure we
+      // don't strand the user in a tiny always-on-top presenter window.
+      if (get().mode !== 'edit') {
+        void window.cuedeck.window.setPresenter(false)
+      }
+      set({ deck: null, activeCardId: null, mode: 'edit' })
+    },
 
     exportDeck: async (id) => {
       const result = await window.cuedeck.decks.export(id)
@@ -166,6 +191,16 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     setStatusMessage: (message) => set({ statusMessage: message }),
+
+    setMode: (mode) => {
+      if (get().mode === mode) return
+      set({ mode })
+      // Fire-and-forget the window side effects; the renderer layout switches
+      // immediately regardless of how the OS honors resize/always-on-top.
+      void window.cuedeck.window.setPresenter(mode === 'present')
+    },
+
+    toggleMode: () => get().setMode(flipMode(get().mode)),
 
     addCard: () => {
       const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }

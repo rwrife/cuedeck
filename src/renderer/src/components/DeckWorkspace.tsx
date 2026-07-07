@@ -1,24 +1,45 @@
 import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { useHotkeys } from '../hooks/useHotkeys'
+import { isPresenterToggleKey } from '@shared/presenter'
 import { CardList } from './CardList'
 import { CardEditor } from './CardEditor'
 import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
+import { PresenterView } from './PresenterView'
 
 /**
  * Main two-pane workspace shown when a deck is open:
  *  - left: card list (the running order)
  *  - right: the active card's editor (notes + snippets)
+ *
+ * Switches to the compact, read-only {@link PresenterView} when the store's
+ * `mode` is `'present'` (toggled by the header button or F5 / Ctrl/Cmd+P).
  */
 export function DeckWorkspace(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const saving = useDeckStore((s) => s.saving)
+  const mode = useDeckStore((s) => s.mode)
   const closeDeck = useDeckStore((s) => s.closeDeck)
   const exportDeck = useDeckStore((s) => s.exportDeck)
+  const toggleMode = useDeckStore((s) => s.toggleMode)
   const [pinned, setPinned] = useState(false)
 
   // Demo hotkeys: 1–9 copy the active card's snippets, ←/→ change cards.
   useHotkeys()
+
+  // Presenter Mode toggle (F5 / Ctrl/Cmd+P), available whenever a deck is open.
+  // Registered here rather than in useHotkeys because it must fire even while a
+  // Ctrl/Cmd modifier is held — which the copy/nav hotkeys deliberately ignore.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (isPresenterToggleKey(e)) {
+        e.preventDefault()
+        useDeckStore.getState().toggleMode()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   useEffect(() => {
     window.cuedeck.window.getAlwaysOnTop().then(setPinned)
@@ -27,6 +48,11 @@ export function DeckWorkspace(): JSX.Element {
   async function togglePin(): Promise<void> {
     const next = await window.cuedeck.window.toggleAlwaysOnTop()
     setPinned(next)
+  }
+
+  // Compact, read-only demo surface.
+  if (mode === 'present') {
+    return <PresenterView />
   }
 
   return (
@@ -54,6 +80,14 @@ export function DeckWorkspace(): JSX.Element {
           >
             🔍 Search
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">/</kbd>
+          </button>
+          <button
+            onClick={toggleMode}
+            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
+            title="Start Presenter Mode — compact, always-on-top demo view (F5 or Ctrl/Cmd+P)"
+          >
+            ▶︎ Present
+            <kbd className="ml-2 rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">F5</kbd>
           </button>
           <button
             onClick={() => exportDeck(deck.id)}
@@ -96,6 +130,9 @@ export function DeckWorkspace(): JSX.Element {
             <span className="text-deck-border">·</span>
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">/</kbd>
             <span>search</span>
+            <span className="text-deck-border">·</span>
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">F5</kbd>
+            <span>present</span>
           </footer>
         </main>
       </div>
