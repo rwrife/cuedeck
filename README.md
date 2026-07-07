@@ -11,7 +11,7 @@ Built with **Electron + React + TypeScript + Vite + Tailwind + Zustand**.
 If you give software demos, you probably script them: what to click, what to say, and the exact chunks of text you paste into forms mid-demo. Doing that in Notepad means constant alt-tabbing and hunting for the right blob. CueDeck gives that workflow real structure:
 
 - **Cue cards** for each beat of the demo (your running order).
-- **Talking-point notes** per card.
+- **Talking-point notes** per card, written in a safe subset of **Markdown** (headings, bold/italic, inline code, bullet/ordered lists, and `- [ ]` task checkboxes) and rendered — sanitized — in Presenter Mode.
 - **Snippets** — labeled text blobs with a big **Copy** button and a **drag handle** so you can drop them straight into the target app.
 - **Pin-on-top** presenter mode so the deck floats above your demo window.
 - **Import / export** decks as `.json` files via native OS dialogs — back them up, commit them to a repo, or share with a teammate.

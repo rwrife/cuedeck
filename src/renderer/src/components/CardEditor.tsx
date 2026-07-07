@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { SnippetButton } from './SnippetButton'
+import { MarkdownNotes } from './MarkdownNotes'
 import { useDragSort } from '../hooks/useDragSort'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
@@ -18,6 +20,9 @@ export function CardEditor(): JSX.Element {
   const reorderSnippets = useDeckStore((s) => s.reorderSnippets)
 
   const card = deck.cards.find((c) => c.id === activeCardId)
+
+  // Notes editor sub-mode: raw Markdown "Write" vs rendered "Preview" (#6).
+  const [notesPreview, setNotesPreview] = useState(false)
 
   const { dragIndex, overIndex, getSourceProps, getTargetProps } = useDragSort(
     SNIPPET_DND_TYPE,
@@ -53,16 +58,65 @@ export function CardEditor(): JSX.Element {
 
       {/* Notes */}
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-deck-muted">
-          Talking Points
-        </label>
-        <textarea
-          value={card.notes}
-          onChange={(e) => updateCard(card.id, { notes: e.target.value })}
-          placeholder="What you'll say and do on this beat…"
-          rows={6}
-          className="w-full resize-y rounded-lg border border-deck-border bg-deck-panel p-3 leading-relaxed outline-none placeholder:text-deck-muted focus:border-deck-accent"
-        />
+        <div className="mb-1 flex items-center justify-between">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-deck-muted">
+            Talking Points
+          </label>
+          {/* Write / Preview toggle for the Markdown notes. */}
+          <div
+            className="flex overflow-hidden rounded border border-deck-border text-xs"
+            role="tablist"
+            aria-label="Notes editor mode"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!notesPreview}
+              onClick={() => setNotesPreview(false)}
+              className={`px-2 py-0.5 transition ${
+                notesPreview
+                  ? 'text-deck-muted hover:text-deck-text'
+                  : 'bg-deck-accent text-white'
+              }`}
+            >
+              Write
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={notesPreview}
+              onClick={() => setNotesPreview(true)}
+              className={`px-2 py-0.5 transition ${
+                notesPreview
+                  ? 'bg-deck-accent text-white'
+                  : 'text-deck-muted hover:text-deck-text'
+              }`}
+              title="Preview rendered Markdown"
+            >
+              Preview
+            </button>
+          </div>
+        </div>
+        {notesPreview ? (
+          card.notes.trim() ? (
+            <MarkdownNotes
+              source={card.notes}
+              className="min-h-[9.5rem] rounded-lg border border-deck-border bg-deck-panel p-3 leading-relaxed"
+            />
+          ) : (
+            <p className="min-h-[9.5rem] rounded-lg border border-dashed border-deck-border bg-deck-panel p-3 text-sm italic text-deck-muted">
+              Nothing to preview yet. Write some Markdown in the Write tab.
+            </p>
+          )
+        ) : (
+          <textarea
+            value={card.notes}
+            onChange={(e) => updateCard(card.id, { notes: e.target.value })}
+            placeholder="What you'll say and do on this beat… (Markdown: **bold**, - lists, - [ ] tasks, `code`)"
+            rows={6}
+            className="w-full resize-y rounded-lg border border-deck-border bg-deck-panel p-3 leading-relaxed outline-none placeholder:text-deck-muted focus:border-deck-accent"
+          />
+        )}
       </div>
 
       {/* Snippets */}

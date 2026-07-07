@@ -37,3 +37,89 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: #3a4152;
 }
+
+/*
+ * Rendered talking-point notes (#6). Notes are authored in a safe Markdown
+ * subset and rendered to sanitized HTML by src/shared/markdown.ts; these rules
+ * give that output readable, theme-matching typography without pulling in a
+ * prose plugin. Scoped under .cuedeck-md so it never leaks into app chrome.
+ */
+.cuedeck-md > *:first-child {
+  margin-top: 0;
+}
+.cuedeck-md > *:last-child {
+  margin-bottom: 0;
+}
+.cuedeck-md p {
+  margin: 0 0 0.6em;
+}
+.cuedeck-md h1,
+.cuedeck-md h2,
+.cuedeck-md h3,
+.cuedeck-md h4,
+.cuedeck-md h5,
+.cuedeck-md h6 {
+  margin: 0.8em 0 0.4em;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.cuedeck-md h1 {
+  font-size: 1.4em;
+}
+.cuedeck-md h2 {
+  font-size: 1.25em;
+}
+.cuedeck-md h3 {
+  font-size: 1.1em;
+}
+.cuedeck-md h4,
+.cuedeck-md h5,
+.cuedeck-md h6 {
+  font-size: 1em;
+}
+.cuedeck-md ul,
+.cuedeck-md ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+.cuedeck-md ul {
+  list-style: disc;
+}
+.cuedeck-md ol {
+  list-style: decimal;
+}
+.cuedeck-md li {
+  margin: 0.15em 0;
+}
+/* Task-list items drop the bullet and align the checkbox with the text. */
+.cuedeck-md li.task-item {
+  list-style: none;
+  margin-left: -1.4em;
+  padding-left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+}
+.cuedeck-md li.task-item input[type='checkbox'] {
+  position: relative;
+  top: 0.15em;
+  accent-color: #6366f1;
+}
+.cuedeck-md li.task-checked {
+  color: #9ca3af;
+  text-decoration: line-through;
+}
+.cuedeck-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: #1e222d;
+  border: 1px solid #2a2f3d;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.cuedeck-md strong {
+  font-weight: 700;
+}
+.cuedeck-md em {
+  font-style: italic;
+}

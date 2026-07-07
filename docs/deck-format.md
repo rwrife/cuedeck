@@ -57,7 +57,7 @@ One step/beat in a demo.
 | ---------- | -------------------- | :------: | ----------- |
 | `id`       | `string` (non-empty) |   yes    | Stable unique id, **unique within the deck**. |
 | `title`    | `string`             |   yes    | Card title / beat name. |
-| `notes`    | `string`             |   yes    | Freeform talking points / script. Plain text, markdown-friendly. |
+| `notes`    | `string`             |   yes    | Freeform talking points / script, authored in a safe Markdown subset (headings, bold/italic, inline code, bullet/ordered lists, `- [ ]` tasks). Stored as raw Markdown; rendered to sanitized HTML in read/presenter contexts. Plain text is a valid subset. |
 | `snippets` | `Snippet[]`          |   yes    | Snippets attached to this card (may be empty). |
 
 ### `Snippet`
