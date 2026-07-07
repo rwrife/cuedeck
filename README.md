@@ -1,5 +1,7 @@
 # 🎬 CueDeck
 
+[![CI](https://github.com/rwrife/cuedeck/actions/workflows/ci.yml/badge.svg)](https://github.com/rwrife/cuedeck/actions/workflows/ci.yml)
+
 **Demo cue cards with instant clipboard snippets.** A desktop teleprompter for software demos — lay out your talking points as cue cards, attach the text blobs you paste into the app you're demoing, and copy or drag them out in one click.
 
 Built with **Electron + React + TypeScript + Vite + Tailwind + Zustand**.
