@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
+import { useHotkeys } from '../hooks/useHotkeys'
 import { CardList } from './CardList'
 import { CardEditor } from './CardEditor'
 
@@ -13,6 +14,9 @@ export function DeckWorkspace(): JSX.Element {
   const saving = useDeckStore((s) => s.saving)
   const closeDeck = useDeckStore((s) => s.closeDeck)
   const [pinned, setPinned] = useState(false)
+
+  // Demo hotkeys: 1–9 copy the active card's snippets, ←/→ change cards.
+  useHotkeys()
 
   useEffect(() => {
     window.cuedeck.window.getAlwaysOnTop().then(setPinned)
@@ -58,8 +62,19 @@ export function DeckWorkspace(): JSX.Element {
         <aside className="w-72 shrink-0 border-r border-deck-border bg-deck-panel">
           <CardList />
         </aside>
-        <main className="min-w-0 flex-1 overflow-auto">
-          <CardEditor />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <CardEditor />
+          </div>
+          {/* Keyboard-hint legend */}
+          <footer className="flex items-center justify-center gap-2 border-t border-deck-border bg-deck-panel px-4 py-1.5 text-xs text-deck-muted">
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">1–9</kbd>
+            <span>copy</span>
+            <span className="text-deck-border">·</span>
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">←</kbd>
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">→</kbd>
+            <span>cards</span>
+          </footer>
         </main>
       </div>
     </div>

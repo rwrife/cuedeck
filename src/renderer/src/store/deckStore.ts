@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
+import { nextCardId } from '@shared/hotkeys'
 
 /** Generate a reasonably-unique id in the renderer (crypto.randomUUID is available). */
 function uid(): string {
@@ -15,6 +16,12 @@ interface DeckState {
   // UI status
   loading: boolean
   saving: boolean
+  /**
+   * Id of the snippet most recently copied, used to flash "Copied ✓" on the
+   * targeted `SnippetButton` when a copy is triggered externally (e.g. via the
+   * number-key hotkeys). Cleared back to null after the flash window.
+   */
+  lastCopiedSnippetId: string | null
 
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
@@ -28,6 +35,18 @@ interface DeckState {
   updateCard: (cardId: string, patch: Partial<Omit<CueCard, 'id'>>) => void
   removeCard: (cardId: string) => void
   setActiveCard: (cardId: string) => void
+  /** Move the active card by a step in the running order (-1 prev, +1 next). */
+  stepActiveCard: (step: -1 | 1) => void
+
+  // Clipboard
+  /**
+   * Copy a snippet's content to the clipboard and flash it. Safe to call from
+   * anywhere (hotkeys, palette, the button itself); it looks the snippet up so
+   * callers only need ids.
+   */
+  copySnippet: (cardId: string, snippetId: string) => Promise<void>
+  /** Clear the copied-flash marker (called by the flash timeout). */
+  clearLastCopied: (snippetId: string) => void
 
   // Snippet ops
   addSnippet: (cardId: string) => void
@@ -36,6 +55,10 @@ interface DeckState {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let copyFlashTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Duration of the "Copied ✓" flash, in ms. Shared by button + hotkeys. */
+export const COPY_FLASH_MS = 1200
 
 export const useDeckStore = create<DeckState>((set, get) => {
   /** Debounced persistence — called after any mutation. */
@@ -66,6 +89,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     activeCardId: null,
     loading: false,
     saving: false,
+    lastCopiedSnippetId: null,
 
     refreshSummaries: async () => {
       const summaries = await window.cuedeck.decks.list()
@@ -119,6 +143,35 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     setActiveCard: (cardId) => set({ activeCardId: cardId }),
+
+    stepActiveCard: (step) => {
+      const { deck, activeCardId } = get()
+      if (!deck) return
+      const next = nextCardId(activeCardId, deck.cards, step)
+      if (next && next !== activeCardId) set({ activeCardId: next })
+    },
+
+    copySnippet: async (cardId, snippetId) => {
+      const { deck } = get()
+      const snippet = deck?.cards
+        .find((c) => c.id === cardId)
+        ?.snippets.find((s) => s.id === snippetId)
+      if (!snippet) return
+
+      await window.cuedeck.clipboard.write(snippet.content)
+
+      // Retrigger the flash even if the same snippet is copied twice in a row.
+      set({ lastCopiedSnippetId: null })
+      set({ lastCopiedSnippetId: snippetId })
+      if (copyFlashTimer) clearTimeout(copyFlashTimer)
+      copyFlashTimer = setTimeout(() => {
+        if (get().lastCopiedSnippetId === snippetId) set({ lastCopiedSnippetId: null })
+      }, COPY_FLASH_MS)
+    },
+
+    clearLastCopied: (snippetId) => {
+      if (get().lastCopiedSnippetId === snippetId) set({ lastCopiedSnippetId: null })
+    },
 
     addSnippet: (cardId) => {
       const snippet: Snippet = { id: uid(), label: 'New Snippet', content: '' }
