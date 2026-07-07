@@ -5,6 +5,7 @@ import { PRESENTER_WINDOW_SIZE } from '../shared/presenter'
 import { resolveTheme } from '../shared/settings'
 import { registerDeckHandlers } from './deckStore'
 import { getSettingsSync, initSettings, registerSettingsHandlers } from './settingsStore'
+import { registerLiveControlHandlers } from './liveControlStore'
 
 const isDev = !app.isPackaged
 
@@ -121,6 +122,10 @@ app.whenReady().then(async () => {
   registerCoreHandlers()
   registerDeckHandlers()
   registerSettingsHandlers()
+  // Live demo control bridge (#17) — opt-in, loopback-only; nothing listens
+  // until the user enables it in-app. The window factory lets it target the
+  // current main window for command forwarding.
+  registerLiveControlHandlers(() => mainWindow)
   createWindow()
 
   app.on('activate', () => {

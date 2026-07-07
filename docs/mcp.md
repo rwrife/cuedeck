@@ -21,9 +21,11 @@ openable CueDeck deck — no manual data entry.
 - **File format:** [`docs/deck-format.md`](deck-format.md).
 
 > **Scope (v1 = authoring only).** This server authors/edits decks **on disk**;
-> it does **not** reach into a running Electron app. Live control of the running
-> app is a separate stretch feature (issue #17). There is deliberately no socket
-> into the app here.
+> it does **not** reach into a running Electron app through *these* tools. Live
+> control of the running app is a separate, opt-in feature (#17) with its own
+> `live_*` tools and a loopback bridge — see
+> [**`docs/live-control.md`**](live-control.md). The authoring tools documented
+> below never open a socket into the app.
 
 ---
 
@@ -175,6 +177,13 @@ crashes.
 
 Snippet `content` may reference `{{variable}}` placeholders; `set_variable` (and
 an outline's `variables`) supply their values, and `render_deck` resolves them.
+
+> **Live control (`live_*`).** The same `cuedeck-mcp` server also registers a
+> separate family of **runtime** tools that drive the *running* app during a demo
+> (select/advance cards, copy snippets, enter/exit Presenter Mode) over an
+> opt-in, loopback-only, token-guarded bridge. They're documented in
+> [**`docs/live-control.md`**](live-control.md). Authoring (on-disk) and live
+> control (running app) are independent — use either without the other.
 
 ### `create_deck_from_outline` — the ergonomic "build a demo" path
 

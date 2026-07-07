@@ -80,6 +80,17 @@ interface DeckState {
    * callers only need ids.
    */
   copySnippet: (cardId: string, snippetId: string) => Promise<void>
+  /**
+   * Live-control variant (#17): resolve a snippet's `{{variables}}` and trigger
+   * the copy flash/sound exactly like {@link copySnippet}, but WITHOUT writing
+   * the clipboard — the main process performs the trusted clipboard write for
+   * bridge-driven copies. Returns the resolved text and label, or null when the
+   * card/snippet can't be found.
+   */
+  copySnippetForLive: (
+    cardId: string,
+    snippetId: string
+  ) => { snippetId: string; label: string; copied: string } | null
   /** Clear the copied-flash marker (called by the flash timeout). */
   clearLastCopied: (snippetId: string) => void
 
@@ -140,6 +151,34 @@ export const useDeckStore = create<DeckState>((set, get) => {
     if (!deck) return
     set({ deck: fn(deck) })
     scheduleSave()
+  }
+
+  /**
+   * Trigger the shared copy feedback (the “Copied ✓” flash + optional chime)
+   * for a snippet, honoring the live copy-flash/copy-sound preferences. Split
+   * out so both the clipboard-writing {@link copySnippet} and the
+   * clipboard-less live-control copy path give identical feedback.
+   */
+  function flashCopied(snippetId: string): void {
+    const { copyFlash, copySound } = useSettingsStore.getState().settings
+
+    if (copySound) playCopyChime()
+
+    if (!copyFlash) {
+      // Feedback flash disabled: make sure no stale marker lingers and skip
+      // scheduling a new one.
+      if (copyFlashTimer) clearTimeout(copyFlashTimer)
+      if (get().lastCopiedSnippetId !== null) set({ lastCopiedSnippetId: null })
+      return
+    }
+
+    // Retrigger the flash even if the same snippet is copied twice in a row.
+    set({ lastCopiedSnippetId: null })
+    set({ lastCopiedSnippetId: snippetId })
+    if (copyFlashTimer) clearTimeout(copyFlashTimer)
+    copyFlashTimer = setTimeout(() => {
+      if (get().lastCopiedSnippetId === snippetId) set({ lastCopiedSnippetId: null })
+    }, COPY_FLASH_MS)
   }
 
   return {
@@ -283,27 +322,22 @@ export const useDeckStore = create<DeckState>((set, get) => {
       const rendered = renderSnippet(snippet.content, deck?.variables)
       await window.cuedeck.clipboard.write(rendered)
 
-      // Copy-feedback preferences (#8): the flash and sound are independently
-      // toggleable. Read the live settings so changes take effect immediately.
-      const { copyFlash, copySound } = useSettingsStore.getState().settings
+      // Copy-feedback preferences (#8): flash + sound are independently
+      // toggleable and shared with the live-control copy path.
+      flashCopied(snippetId)
+    },
 
-      if (copySound) playCopyChime()
-
-      if (!copyFlash) {
-        // Feedback flash disabled: make sure no stale marker lingers and skip
-        // scheduling a new one.
-        if (copyFlashTimer) clearTimeout(copyFlashTimer)
-        if (get().lastCopiedSnippetId !== null) set({ lastCopiedSnippetId: null })
-        return
-      }
-
-      // Retrigger the flash even if the same snippet is copied twice in a row.
-      set({ lastCopiedSnippetId: null })
-      set({ lastCopiedSnippetId: snippetId })
-      if (copyFlashTimer) clearTimeout(copyFlashTimer)
-      copyFlashTimer = setTimeout(() => {
-        if (get().lastCopiedSnippetId === snippetId) set({ lastCopiedSnippetId: null })
-      }, COPY_FLASH_MS)
+    copySnippetForLive: (cardId, snippetId) => {
+      const { deck } = get()
+      const snippet = deck?.cards
+        .find((c) => c.id === cardId)
+        ?.snippets.find((s) => s.id === snippetId)
+      if (!snippet) return null
+      // Same `{{variable}}` substitution as the normal copy path; the main
+      // process performs the actual clipboard write for bridge-driven copies.
+      const copied = renderSnippet(snippet.content, deck?.variables)
+      flashCopied(snippetId)
+      return { snippetId: snippet.id, label: snippet.label, copied }
     },
 
     clearLastCopied: (snippetId) => {

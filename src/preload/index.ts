@@ -2,6 +2,47 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type { Deck, DeckSummary, ExportResult, ImportResult } from '../shared/types'
 import type { Settings } from '../shared/settings'
+import type { LiveState } from '../shared/liveControl'
+
+/**
+ * Payload the main process sends to the renderer to apply a live-control
+ * command (#17). The renderer applies it to the store, then replies on
+ * `replyChannel` with the outcome (and, for `copySnippet`, the resolved text
+ * for main to place on the clipboard).
+ */
+export interface LiveCommandEnvelope {
+  id: number
+  replyChannel: string
+  message: {
+    command:
+      | 'selectCard'
+      | 'nextCard'
+      | 'prevCard'
+      | 'copySnippet'
+      | 'enterPresenter'
+      | 'exitPresenter'
+    index?: number
+    cardId?: string
+    snippetId?: string
+  }
+}
+
+/** The renderer's reply to a {@link LiveCommandEnvelope}. */
+export type LiveCommandReply =
+  | { ok: false; reason: 'no_deck_open' | 'card_not_found' | 'snippet_not_found'; message: string }
+  | { ok: true; copy?: { snippetId: string; label: string; copied: string } }
+
+/** In-app live-control status surfaced to the renderer for the toggle/indicator. */
+export interface LiveControlStatus {
+  enabled: boolean
+  descriptor: {
+    host: string
+    port: number
+    token: string
+    version: number
+    pid: number
+  } | null
+}
 
 /**
  * The typed API surface exposed to the renderer via contextBridge.
@@ -41,6 +82,39 @@ const api = {
      * and resolves to the resulting full settings object.
      */
     set: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke(IPC.settingsSet, patch)
+  },
+  /**
+   * Live demo control bridge (#17). Opt-in, loopback-only remote control of the
+   * running app for MCP clients. The renderer drives the in-app toggle/indicator
+   * (`getStatus`/`enable`/`disable`), continuously `publishState`s a lightweight
+   * snapshot the bridge serves, and subscribes via `onCommand` to apply incoming
+   * select/next/prev/copy/presenter commands to the store.
+   */
+  live: {
+    /** Read the current bridge status (enabled + connection descriptor). */
+    getStatus: (): Promise<LiveControlStatus> => ipcRenderer.invoke(IPC.liveGetStatus),
+    /** Enable the bridge (starts the loopback listener); resolves to the new status. */
+    enable: (): Promise<LiveControlStatus> => ipcRenderer.invoke(IPC.liveEnable),
+    /** Disable/revoke the bridge (stops listening, removes the descriptor). */
+    disable: (): Promise<LiveControlStatus> => ipcRenderer.invoke(IPC.liveDisable),
+    /** Push a fresh runtime-state snapshot for the bridge to serve on `getState`. */
+    publishState: (state: LiveState): void => ipcRenderer.send(IPC.livePublishState, state),
+    /**
+     * Subscribe to incoming bridge commands. The handler applies the command and
+     * returns a reply, which is sent back to main on the envelope's reply
+     * channel. Returns an unsubscribe function.
+     */
+    onCommand: (
+      handler: (message: LiveCommandEnvelope['message']) => Promise<LiveCommandReply>
+    ): (() => void) => {
+      const listener = (_evt: unknown, envelope: LiveCommandEnvelope): void => {
+        void handler(envelope.message).then((reply) => {
+          ipcRenderer.send(envelope.replyChannel, reply)
+        })
+      }
+      ipcRenderer.on(IPC.liveApplyCommand, listener)
+      return () => ipcRenderer.removeListener(IPC.liveApplyCommand, listener)
+    }
   }
 }
 

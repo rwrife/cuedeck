@@ -178,6 +178,9 @@ describe('cuedeck-mcp server (real MCP client over in-memory transport)', () => 
   it('registers all authoring tools', async () => {
     const { tools } = await client.listTools()
     const names = tools.map((t) => t.name).sort()
+    // The authoring tools (#15) plus the live-control runtime tools (#17), which
+    // createCueDeckMcpServer now also registers. Both families are advertised
+    // together but remain independently usable.
     expect(names).toEqual(
       [
         'add_card',
@@ -192,7 +195,14 @@ describe('cuedeck-mcp server (real MCP client over in-memory transport)', () => 
         'reorder_snippets',
         'set_variable',
         'update_card',
-        'update_snippet'
+        'update_snippet',
+        'live_copy_snippet',
+        'live_enter_presenter',
+        'live_exit_presenter',
+        'live_get_state',
+        'live_next',
+        'live_prev',
+        'live_select_card'
       ].sort()
     )
   })
