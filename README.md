@@ -44,12 +44,30 @@ npm run dev        # launch the app in dev mode (hot reload)
 ### Other scripts
 
 ```bash
-npm run build      # type-check + build main/preload/renderer
+npm run build      # type-check + build main/preload/renderer + the cuedeck CLI
 npm run typecheck  # TS type-check (node + web)
 npm run lint       # ESLint
 npm run test       # Vitest unit tests
+npm run build:cli  # build just the headless `cuedeck` CLI (out/cli/index.js)
 npm run package    # build a distributable with electron-builder
 ```
+
+### Headless CLI
+
+CueDeck ships a **headless `cuedeck` CLI** so decks are fully scriptable from a
+shell, CI, or an AI agent — no GUI required. It reads/writes the *same* on-disk
+deck store as the app.
+
+```bash
+npm run build:cli
+DECK=$(node ./out/cli/index.js create "Product Launch")
+node ./out/cli/index.js add-card "$DECK" --title "Kickoff" --notes "Say hi"
+node ./out/cli/index.js render "$DECK"
+```
+
+Every command (list, create, show, add-card, add-snippet, set-var, import,
+export, validate, render), the `--dir` / `CUEDECK_DIR` override, `--json` output,
+and exit codes are documented in **[`docs/cli.md`](docs/cli.md)**.
 
 ### Packaging / releases
 
@@ -83,7 +101,8 @@ src/
 │       ├── components/     # DeckPicker, DeckWorkspace, CardList, CardEditor, SnippetButton
 │       ├── store/          # Zustand store w/ debounced auto-save
 │       └── styles/
-└── shared/         # types + IPC channels + deck validator/normalizer (both sides)
+├── shared/         # types + IPC channels + deck validator/normalizer (both sides)
+└── cli/            # headless `cuedeck` CLI (deck store + commands, no Electron)
 ```
 
 ## Data Storage
@@ -100,7 +119,8 @@ Each deck is human-readable JSON, so export/backup is just a file copy. You can 
 
 See the GitHub Issues for the build-out plan. Shipped so far: keyboard-driven
 copy hotkeys, drag-to-reorder, deck import/export, search, presenter compact
-mode, themes, and cross-platform packaging (see [`RELEASING.md`](RELEASING.md)).
+mode, themes, cross-platform packaging (see [`RELEASING.md`](RELEASING.md)), and
+a headless [`cuedeck` CLI](docs/cli.md) for scripting decks.
 
 ## License
 
