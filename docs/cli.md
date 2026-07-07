@@ -5,7 +5,7 @@ edit decks, cards, snippets, and variables; validate, import, and export deck
 files; and render a plain-text running order — all **without launching the
 Electron app**. It's the non-GUI entry point that makes decks fully scriptable
 from any shell, from CI, or from an AI agent, and it's the layer the
-[MCP server](../src/shared) wraps.
+[MCP server](mcp.md) wraps.
 
 It reads and writes the **same on-disk deck store** the desktop app uses, so a
 deck you author in a terminal shows up in the GUI and vice-versa.

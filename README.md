@@ -69,6 +69,25 @@ Every command (list, create, show, add-card, add-snippet, set-var, import,
 export, validate, render), the `--dir` / `CUEDECK_DIR` override, `--json` output,
 and exit codes are documented in **[`docs/cli.md`](docs/cli.md)**.
 
+### MCP server — AI builds demos
+
+CueDeck also ships a **`cuedeck-mcp`** [Model Context Protocol](https://modelcontextprotocol.io)
+server so any MCP client (Claude Desktop, the Claude/OpenClaw CLI, …) can **build
+and edit demos conversationally** and have them land directly in the same deck
+store. Point a prompt at it — _"build me a 12-card demo of feature X"_ — and get
+a real, openable deck, no manual data entry.
+
+```bash
+npm run build:mcp
+CUEDECK_DIR=./my-decks node ./out/mcp/index.js   # stdio MCP server
+```
+
+The tools (`create_deck_from_outline`, `add_card`, `add_snippet`, `set_variable`,
+`render_deck`, …), the readable `cuedeck://decks` / `cuedeck://deck/{id}`
+resources, ready-to-paste client config snippets, and an example "build a demo"
+prompt are documented in **[`docs/mcp.md`](docs/mcp.md)**.
+
+
 ### Packaging / releases
 
 CueDeck packages to native installers (Windows `.exe`/NSIS, macOS `.dmg`/`.zip`,
