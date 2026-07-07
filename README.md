@@ -87,6 +87,23 @@ The tools (`create_deck_from_outline`, `add_card`, `add_snippet`, `set_variable`
 resources, ready-to-paste client config snippets, and an example "build a demo"
 prompt are documented in **[`docs/mcp.md`](docs/mcp.md)**.
 
+### AI authoring — from a demo brief to a deck
+
+Want an assistant to *build the demo for you*? Write a short **demo brief** (goal,
+audience, key beats, the paste-blobs you need) and hand it — with a ready-made
+prompt — to any `cuedeck-mcp` client. It turns the brief into a real deck in one
+`create_deck_from_outline` call, which you then review and refine.
+
+- **Guide:** **[`docs/ai-authoring.md`](docs/ai-authoring.md)** — the brief shape,
+  how it maps to decks → cards → snippets → variables, and the conventions that
+  make AI-authored demos good.
+- **Templates:** [`templates/demo-brief.md`](templates/demo-brief.md) (fill it in)
+  and [`templates/build-demo.prompt.md`](templates/build-demo.prompt.md) (hand it
+  to the assistant).
+- **Worked examples:** [`examples/`](examples/) — two full briefs (SaaS onboarding
+  and an API/dev-tool demo) with the decks they produce, doubling as round-trip
+  fixtures that lock the authoring contract in the test suite.
+
 
 ### Packaging / releases
 
@@ -124,6 +141,14 @@ src/
 └── cli/            # headless `cuedeck` CLI (deck store + commands, no Electron)
 ```
 
+Authoring assets live at the repo root:
+
+```
+docs/ai-authoring.md   # demo-brief → deck guide
+templates/             # demo-brief + build-demo prompt templates
+examples/              # worked briefs + expected decks (round-trip fixtures)
+```
+
 ## Data Storage
 
 Decks are stored as individual JSON files under Electron's `userData` directory:
@@ -138,8 +163,10 @@ Each deck is human-readable JSON, so export/backup is just a file copy. You can 
 
 See the GitHub Issues for the build-out plan. Shipped so far: keyboard-driven
 copy hotkeys, drag-to-reorder, deck import/export, search, presenter compact
-mode, themes, cross-platform packaging (see [`RELEASING.md`](RELEASING.md)), and
-a headless [`cuedeck` CLI](docs/cli.md) for scripting decks.
+mode, themes, cross-platform packaging (see [`RELEASING.md`](RELEASING.md)), a
+headless [`cuedeck` CLI](docs/cli.md) for scripting decks, a
+[`cuedeck-mcp`](docs/mcp.md) server, and an
+[AI-authoring workflow](docs/ai-authoring.md) (demo brief → deck).
 
 ## License
 

@@ -27,6 +27,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icons": "node scripts/gen-placeholder-icon.mjs",
+    "gen:examples": "node scripts/gen-examples.mjs",
     "package": "electron-vite build && electron-builder",
     "package:dir": "electron-vite build && electron-builder --dir",
     "package:linux": "electron-vite build && electron-builder --linux",
