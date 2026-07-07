@@ -51,6 +51,21 @@ npm run test       # Vitest unit tests
 npm run package    # build a distributable with electron-builder
 ```
 
+### Packaging / releases
+
+CueDeck packages to native installers (Windows `.exe`/NSIS, macOS `.dmg`/`.zip`,
+Linux `AppImage`/`.deb`) via **electron-builder**:
+
+```bash
+npm run package        # build the current OS's installers into release/
+npm run package:linux  # AppImage + deb
+npm run package:win    # NSIS installer
+npm run package:mac    # dmg + zip (x64 + arm64)
+```
+
+See **[`RELEASING.md`](RELEASING.md)** for the full build/release process,
+cross-OS caveats, icon replacement, and code-signing notes.
+
 ## Project Structure
 
 ```
@@ -83,7 +98,9 @@ Each deck is human-readable JSON, so export/backup is just a file copy. You can 
 
 ## Roadmap
 
-See the GitHub Issues for the build-out plan — keyboard-driven copy hotkeys, drag-to-reorder, deck import/export, search, presenter compact mode, themes, and packaging for all platforms.
+See the GitHub Issues for the build-out plan. Shipped so far: keyboard-driven
+copy hotkeys, drag-to-reorder, deck import/export, search, presenter compact
+mode, themes, and cross-platform packaging (see [`RELEASING.md`](RELEASING.md)).
 
 ## License
 
