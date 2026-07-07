@@ -1,0 +1,70 @@
+name: Release
+
+# Build native installers on their respective OSes when a version tag is pushed.
+#
+# This is intentionally a "build + upload artifacts" workflow only: it does NOT
+# create a GitHub Release and does NOT code-sign or notarize (see RELEASING.md).
+# Wire in signing secrets / `softprops/action-gh-release` when you're ready to
+# publish real, signed builds.
+on:
+  push:
+    tags:
+      - 'v*'
+  # Allow manual runs for testing the packaging pipeline without cutting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Don't cancel the whole matrix if one OS fails to package.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: package:linux
+            artifact: cuedeck-linux
+          - os: windows-latest
+            script: package:win
+            artifact: cuedeck-windows
+          - os: macos-latest
+            script: package:mac
+            artifact: cuedeck-macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Full install here (unlike CI) so the Electron binary is available for
+      # packaging.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package
+        run: npm run ${{ matrix.script }}
+        env:
+          # Fail loudly instead of silently skipping unsigned builds; signing is
+          # explicitly out of scope for this workflow.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+            release/*.dmg
+            release/*.zip
