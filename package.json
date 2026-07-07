@@ -7,13 +7,16 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "cuedeck": "./out/cli/index.js"
+    "cuedeck": "./out/cli/index.js",
+    "cuedeck-mcp": "./out/mcp/index.js"
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && npm run build:cli",
+    "build": "electron-vite build && npm run build:cli && npm run build:mcp",
     "build:cli": "node scripts/build-cli.mjs",
+    "build:mcp": "node scripts/build-mcp.mjs",
     "cli": "node scripts/build-cli.mjs && node ./out/cli/index.js",
+    "mcp": "node scripts/build-mcp.mjs && node ./out/mcp/index.js",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
@@ -31,6 +34,8 @@
     "package:mac": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3",
     "zustand": "^4.5.5"
   },
   "build": {
