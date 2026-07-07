@@ -5,3 +5,4 @@
 export * from './types'
 export * from './deck'
 export * from './ipc'
+export * from './search'

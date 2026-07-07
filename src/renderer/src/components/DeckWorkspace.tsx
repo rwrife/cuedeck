@@ -3,6 +3,7 @@ import { useDeckStore } from '../store/deckStore'
 import { useHotkeys } from '../hooks/useHotkeys'
 import { CardList } from './CardList'
 import { CardEditor } from './CardEditor'
+import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
 
 /**
  * Main two-pane workspace shown when a deck is open:
@@ -47,6 +48,14 @@ export function DeckWorkspace(): JSX.Element {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+            className="flex items-center gap-2 rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
+            title="Search cards and snippets (/ or Ctrl/Cmd+K)"
+          >
+            🔍 Search
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">/</kbd>
+          </button>
+          <button
             onClick={() => exportDeck(deck.id)}
             className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
             title="Export this deck to a .json file"
@@ -84,9 +93,15 @@ export function DeckWorkspace(): JSX.Element {
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">←</kbd>
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">→</kbd>
             <span>cards</span>
+            <span className="text-deck-border">·</span>
+            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">/</kbd>
+            <span>search</span>
           </footer>
         </main>
       </div>
+
+      {/* Quick-search / command palette overlay (/ or Ctrl/Cmd+K). */}
+      <CommandPalette />
     </div>
   )
 }
