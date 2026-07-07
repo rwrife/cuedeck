@@ -27,6 +27,8 @@ interface DeckState {
    * number-key hotkeys). Cleared back to null after the flash window.
    */
   lastCopiedSnippetId: string | null
+  /** Transient message surfaced to the user (import/export errors or confirmations). */
+  statusMessage: string | null
 
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
@@ -34,6 +36,11 @@ interface DeckState {
   createDeck: (name: string) => Promise<void>
   deleteDeck: (id: string) => Promise<void>
   closeDeck: () => void
+
+  // Import / export
+  exportDeck: (id: string) => Promise<void>
+  importDeck: () => Promise<void>
+  setStatusMessage: (message: string | null) => void
 
   // Card ops
   addCard: () => void
@@ -99,6 +106,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     loading: false,
     saving: false,
     lastCopiedSnippetId: null,
+    statusMessage: null,
 
     refreshSummaries: async () => {
       const summaries = await window.cuedeck.decks.list()
@@ -133,6 +141,31 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     closeDeck: () => set({ deck: null, activeCardId: null }),
+
+    exportDeck: async (id) => {
+      const result = await window.cuedeck.decks.export(id)
+      if (result.error) {
+        set({ statusMessage: `Export failed: ${result.error}` })
+      } else if (result.ok && result.filePath) {
+        set({ statusMessage: `Exported to ${result.filePath}` })
+      }
+      // Silent no-op when the user simply cancelled the dialog.
+    },
+
+    importDeck: async () => {
+      const result = await window.cuedeck.decks.import()
+      if (result.error) {
+        set({ statusMessage: `Import failed: ${result.error}` })
+        return
+      }
+      if (result.ok && result.summary) {
+        await get().refreshSummaries()
+        set({ statusMessage: `Imported “${result.summary.name}”.` })
+      }
+      // Silent no-op when the user cancelled the dialog.
+    },
+
+    setStatusMessage: (message) => set({ statusMessage: message }),
 
     addCard: () => {
       const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }

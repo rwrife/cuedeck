@@ -1,9 +1,15 @@
-import { app, ipcMain } from 'electron'
+import { app, dialog, ipcMain, BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { IPC } from '../shared/ipc'
-import { type Deck, type DeckSummary } from '../shared/types'
-import { createEmptyDeck, normalizeDeck, validateDeck } from '../shared/deck'
+import {
+  CURRENT_SCHEMA_VERSION,
+  type Deck,
+  type DeckSummary,
+  type ExportResult,
+  type ImportResult
+} from '../shared/types'
+import { createEmptyDeck, generateId, normalizeDeck, validateDeck } from '../shared/deck'
 
 /**
  * Deck persistence layer. Decks are stored as individual JSON files under
@@ -57,6 +63,20 @@ async function readDeckFile(path: string): Promise<Deck | null> {
   return result.ok ? result.deck : normalizeDeck(parsed)
 }
 
+/** Turn a deck name into a safe default export filename: "<name>.cuedeck.json". */
+function defaultExportName(name: string): string {
+  const safe = (name || 'deck')
+    .trim()
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${safe || 'deck'}.cuedeck.json`
+}
+
+/** Resolve the BrowserWindow that owns a given IPC event, for dialog parenting. */
+function windowFor(evt: Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(evt.sender)
+}
+
 export function registerDeckHandlers(): void {
   ipcMain.handle(IPC.deckList, async (): Promise<DeckSummary[]> => {
     await ensureDir()
@@ -103,6 +123,108 @@ export function registerDeckHandlers(): void {
       return true
     } catch {
       return false
+    }
+  })
+
+  // Export a deck to an arbitrary .json file via a native save dialog.
+  ipcMain.handle(IPC.deckExport, async (evt, id: string): Promise<ExportResult> => {
+    await ensureDir()
+    const deck = await readDeckFile(deckPath(id))
+    if (!deck) return { ok: false, error: 'Deck not found.' }
+
+    const parent = windowFor(evt)
+    const options = {
+      title: 'Export Deck',
+      defaultPath: defaultExportName(deck.name),
+      filters: [
+        { name: 'CueDeck / JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    }
+    const result = parent
+      ? await dialog.showSaveDialog(parent, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { ok: false }
+
+    try {
+      await fs.writeFile(result.filePath, JSON.stringify(deck, null, 2), 'utf-8')
+      return { ok: true, filePath: result.filePath }
+    } catch (err) {
+      return { ok: false, error: `Could not write file: ${(err as Error).message}` }
+    }
+  })
+
+  // Import a deck from a .json file: validate, re-id, persist, and return its summary.
+  ipcMain.handle(IPC.deckImport, async (evt): Promise<ImportResult> => {
+    await ensureDir()
+
+    const parent = windowFor(evt)
+    const options = {
+      title: 'Import Deck',
+      properties: ['openFile' as const],
+      filters: [
+        { name: 'CueDeck / JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    }
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return { ok: false }
+
+    const sourcePath = result.filePaths[0]
+    let raw: string
+    try {
+      raw = await fs.readFile(sourcePath, 'utf-8')
+    } catch (err) {
+      return { ok: false, error: `Could not read file: ${(err as Error).message}` }
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return {
+        ok: false,
+        error: `"${basename(sourcePath)}" is not valid JSON.`
+      }
+    }
+
+    const validation = validateDeck(parsed)
+    if (!validation.ok) {
+      return {
+        ok: false,
+        error: `"${basename(sourcePath)}" is not a valid CueDeck file.`
+      }
+    }
+
+    // Normalize (fills defaults / upgrades schemaVersion), then re-id and
+    // re-stamp so importing never collides with an existing deck.
+    const now = nowIso()
+    const normalized = normalizeDeck(validation.deck)
+    const imported: Deck = {
+      ...normalized,
+      id: generateId(),
+      createdAt: normalized.createdAt || now,
+      updatedAt: now,
+      schemaVersion: CURRENT_SCHEMA_VERSION
+    }
+
+    try {
+      await fs.writeFile(deckPath(imported.id), JSON.stringify(imported, null, 2), 'utf-8')
+    } catch (err) {
+      return { ok: false, error: `Could not save imported deck: ${(err as Error).message}` }
+    }
+
+    return {
+      ok: true,
+      summary: {
+        id: imported.id,
+        name: imported.name,
+        filePath: deckPath(imported.id),
+        cardCount: imported.cards.length,
+        updatedAt: imported.updatedAt
+      }
     }
   })
 }

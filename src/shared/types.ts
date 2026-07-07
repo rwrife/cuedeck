@@ -68,6 +68,26 @@ export type DeckValidationResult =
   | { ok: true; deck: Deck }
   | { ok: false; errors: string[] }
 
+/** Result of a deck export attempt, surfaced to the renderer. */
+export interface ExportResult {
+  /** True when a file was written; false when the user cancelled. */
+  ok: boolean
+  /** Absolute path written to (present when ok). */
+  filePath?: string
+  /** Human-readable failure reason (present when a real error occurred). */
+  error?: string
+}
+
+/** Result of a deck import attempt, surfaced to the renderer. */
+export interface ImportResult {
+  /** True when a deck was imported and saved; false when cancelled or invalid. */
+  ok: boolean
+  /** The freshly re-id'd deck summary (present when ok). */
+  summary?: DeckSummary
+  /** Human-readable failure reason (present when a real error occurred). */
+  error?: string
+}
+
 /** The current deck schema version emitted by this build. */
 export const CURRENT_SCHEMA_VERSION = 1
 
