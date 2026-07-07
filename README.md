@@ -19,9 +19,17 @@ If you give software demos, you probably script them: what to click, what to say
 
 | Term | Meaning |
 | --- | --- |
-| **Deck** | A full demo script. Saved as one JSON file. |
+| **Deck** | A full demo script. Saved as one `*.cuedeck.json` file. |
 | **Cue Card** | One step/beat. Has a title, notes, and 0..N snippets. |
 | **Snippet** | A labeled blob of text. One-click copy + drag-out. |
+
+> **Deck file format:** decks are a single versioned JSON document
+> (`*.cuedeck.json`). The format is documented in
+> [`docs/deck-format.md`](docs/deck-format.md) with a published JSON Schema
+> ([`schema/cuedeck.schema.json`](schema/cuedeck.schema.json), Draft 2020-12).
+> Validation/normalization lives in one shared module
+> ([`src/shared/deck.ts`](src/shared/deck.ts)) used by the app, CLI, and MCP
+> server.
 
 ## Getting Started
 
@@ -57,7 +65,7 @@ src/
 │       ├── components/     # DeckPicker, DeckWorkspace, CardList, CardEditor, SnippetButton
 │       ├── store/          # Zustand store w/ debounced auto-save
 │       └── styles/
-└── shared/         # types + IPC channel constants (used by both sides)
+└── shared/         # types + IPC channels + deck validator/normalizer (both sides)
 ```
 
 ## Data Storage

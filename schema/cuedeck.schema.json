@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cuedeck.app/schema/cuedeck.schema.json",
+  "title": "CueDeck Deck",
+  "description": "Canonical CueDeck deck file format. The top-level object is a single Deck, persisted as a `*.cuedeck.json` file. This schema is kept in lockstep with the authoritative TypeScript types in src/shared/types.ts and the shared validator in src/shared/deck.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "cards", "createdAt", "updatedAt", "schemaVersion"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable unique id for the deck (UUID v4 in practice)."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-friendly deck name shown in the picker."
+    },
+    "cards": {
+      "type": "array",
+      "description": "Ordered list of cue cards. Order is the demo running order.",
+      "items": { "$ref": "#/$defs/cueCard" }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of creation."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last modification."
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "description": "Deck schema version. Used for forward migrations.",
+      "enum": [1],
+      "const": 1
+    },
+    "variables": {
+      "$ref": "#/$defs/deckVariables"
+    }
+  },
+  "$defs": {
+    "snippet": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A labeled blob of text the user copies or drags into the demo target app.",
+      "required": ["id", "label", "content"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable unique id for the snippet (unique within its card)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Short label shown on the copy button, e.g. \"Test email\"."
+        },
+        "content": {
+          "type": "string",
+          "description": "The actual text placed on the clipboard / dragged out."
+        }
+      }
+    },
+    "cueCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One step/beat in a demo. Holds talking-point notes and 0..N snippets.",
+      "required": ["id", "title", "notes", "snippets"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable unique id for the card (unique within the deck)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Card title / beat name."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Freeform talking points / script for this beat. Plain text (markdown-friendly)."
+        },
+        "snippets": {
+          "type": "array",
+          "description": "Snippets attached to this card.",
+          "items": { "$ref": "#/$defs/snippet" }
+        }
+      }
+    },
+    "deckVariables": {
+      "type": "object",
+      "description": "Optional named variables (forward-compatible with snippet variable substitution, #7). Flat string→string map; omit entirely when unused.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

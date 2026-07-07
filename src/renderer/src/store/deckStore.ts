@@ -1,10 +1,14 @@
 import { create } from 'zustand'
 import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
 import { nextCardId } from '@shared/hotkeys'
+import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 
-/** Generate a reasonably-unique id in the renderer (crypto.randomUUID is available). */
+/**
+ * Generate a reasonably-unique id in the renderer. Delegates to the shared
+ * `generateId` so ids are produced identically in the renderer, main, and CLI.
+ */
 function uid(): string {
-  return crypto.randomUUID()
+  return generateId()
 }
 
 interface DeckState {
@@ -98,7 +102,11 @@ export const useDeckStore = create<DeckState>((set, get) => {
 
     openDeck: async (id) => {
       set({ loading: true })
-      const deck = await window.cuedeck.decks.load(id)
+      const loaded = await window.cuedeck.decks.load(id)
+      // Route the loaded deck through the shared validator/normalizer. Valid
+      // decks pass through unchanged; a loose deck is repaired rather than
+      // rendering a broken shape. `null` (missing/unreadable) stays `null`.
+      const deck = loaded ? (validateDeck(loaded).ok ? loaded : normalizeDeck(loaded)) : null
       set({
         deck,
         loading: false,
