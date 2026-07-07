@@ -1,0 +1,106 @@
+{
+  "id": "deck",
+  "name": "API / Dev-Tool Demo",
+  "cards": [
+    {
+      "id": "card-1",
+      "title": "The problem in one screen",
+      "notes": "Open on the pain, not the product. Show the messy before: polling a REST endpoint on a cron, missing events, stale data. Ten seconds, tops — then promise the fix.",
+      "snippets": [
+        {
+          "id": "card-1-snippet-1",
+          "label": "Old polling snippet",
+          "content": "while true; do curl -s {{apiBase}}/events | jq '.[]'; sleep 30; done"
+        }
+      ]
+    },
+    {
+      "id": "card-2",
+      "title": "Grab an API key",
+      "notes": "Keys are self-serve — say so. Copy the demo key onto the clipboard so every subsequent request just works. Mention scopes exist without going down the rabbit hole.",
+      "snippets": [
+        {
+          "id": "card-2-snippet-1",
+          "label": "API token",
+          "content": "{{token}}"
+        },
+        {
+          "id": "card-2-snippet-2",
+          "label": "Auth header",
+          "content": "Authorization: Bearer {{token}}"
+        }
+      ]
+    },
+    {
+      "id": "card-3",
+      "title": "First request",
+      "notes": "The hello-world moment. Run one curl, get real JSON back. This proves the API is up and the key works before anything fancy.",
+      "snippets": [
+        {
+          "id": "card-3-snippet-1",
+          "label": "List events (curl)",
+          "content": "curl -H \"Authorization: Bearer {{token}}\" {{apiBase}}/events"
+        },
+        {
+          "id": "card-3-snippet-2",
+          "label": "Create event (curl)",
+          "content": "curl -X POST -H \"Authorization: Bearer {{token}}\" -H 'Content-Type: application/json' -d '{\"type\":\"{{eventType}}\",\"amount\":4200}' {{apiBase}}/events"
+        }
+      ]
+    },
+    {
+      "id": "card-4",
+      "title": "Use the SDK",
+      "notes": "Now show the ergonomic path. Same call, three lines of typed code. Contrast with the raw curl to make the DX win land.",
+      "snippets": [
+        {
+          "id": "card-4-snippet-1",
+          "label": "Install",
+          "content": "npm install @example/sdk"
+        },
+        {
+          "id": "card-4-snippet-2",
+          "label": "SDK usage (TS)",
+          "content": "import { Client } from '@example/sdk'\nconst api = new Client({ token: '{{token}}' })\nconst events = await api.events.list()"
+        }
+      ]
+    },
+    {
+      "id": "card-5",
+      "title": "Subscribe to a webhook",
+      "notes": "This is the headline: stop polling, get pushed. Register the webhook live and show the endpoint receive a real {{eventType}} event. Have the payload ready so you can talk through the shape.",
+      "snippets": [
+        {
+          "id": "card-5-snippet-1",
+          "label": "Register webhook (curl)",
+          "content": "curl -X POST -H \"Authorization: Bearer {{token}}\" -d 'url=https://hooks.{{eventType}}.example/inbound' {{apiBase}}/webhooks"
+        },
+        {
+          "id": "card-5-snippet-2",
+          "label": "Example payload",
+          "content": "{\n  \"type\": \"{{eventType}}\",\n  \"id\": \"evt_demo_123\",\n  \"data\": { \"amount\": 4200, \"currency\": \"usd\" }\n}"
+        }
+      ]
+    },
+    {
+      "id": "card-6",
+      "title": "Recap & docs",
+      "notes": "Tie it together: key → request → SDK → webhook. Point at the docs and the quickstart repo. Invite questions. Don't add new material here — just land the plane.",
+      "snippets": [
+        {
+          "id": "card-6-snippet-1",
+          "label": "Docs URL",
+          "content": "{{apiBase}}/docs"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "updatedAt": "2000-01-01T00:00:00.000Z",
+  "schemaVersion": 2,
+  "variables": {
+    "apiBase": "https://api.example.com/v1",
+    "token": "sk_demo_00000000",
+    "eventType": "checkout.completed"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "SaaS Onboarding Walkthrough",
+  "variables": {
+    "customer": "Acme",
+    "demoEmail": "ada@acme.example",
+    "workspace": "acme-hq",
+    "dataSource": "Postgres (analytics-prod)"
+  },
+  "cards": [
+    {
+      "title": "Welcome & sign in",
+      "notes": "Set the stage: who this is for and what they'll have working by the end. Sign in with the demo account so the audience sees a real, populated workspace — not an empty shell.\n\n- One line on the problem CueDeck-for-SaaS solves for {{customer}}\n- Sign in, land on the workspace home",
+      "snippets": [
+        { "label": "Demo email", "content": "{{demoEmail}}" },
+        { "label": "Demo password", "content": "hunter2-demo-only" }
+      ]
+    },
+    {
+      "title": "Create your workspace",
+      "notes": "Show the empty state first (it's honest and relatable), then create the workspace live. Name it after the customer so the rest of the demo feels bespoke.",
+      "snippets": [
+        { "label": "Workspace slug", "content": "{{workspace}}" }
+      ]
+    },
+    {
+      "title": "Invite a teammate",
+      "notes": "Collaboration is the hook for most SaaS buyers. Send one invite and call out that seats are self-serve. Don't dwell — this is a 20-second beat.",
+      "snippets": [
+        { "label": "Teammate email", "content": "teammate@{{customer}}.example" },
+        { "label": "Invite message", "content": "Hey — added you to the {{customer}} workspace so we can set this up together." }
+      ]
+    },
+    {
+      "title": "Connect a data source",
+      "notes": "This is the \"aha\" moment: real data flowing in. Connect the source, show the sync status go green. Have the connection string on the clipboard so there's zero fumbling.",
+      "snippets": [
+        { "label": "Data source", "content": "{{dataSource}}" },
+        { "label": "Connection string", "content": "postgres://demo:***@analytics-prod.{{customer}}.internal:5432/analytics" }
+      ]
+    },
+    {
+      "title": "See your first insight",
+      "notes": "Pay off the data connection immediately. Open the auto-generated dashboard and narrate one number that would matter to {{customer}}. End on the value, not the UI.",
+      "snippets": [
+        { "label": "Sample metric", "content": "Weekly active accounts" }
+      ]
+    },
+    {
+      "title": "Next steps",
+      "notes": "Recap the three things they just did: created a workspace, connected data, saw an insight. Offer the obvious next action (start a trial / book a rollout call) and open the floor for questions.",
+      "snippets": []
+    }
+  ]
+}
