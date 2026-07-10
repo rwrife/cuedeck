@@ -44,7 +44,8 @@ Each of these first runs `electron-vite build` (compiling `main`, `preload`, and
 `renderer` into `out/`) and then invokes electron-builder. The packaged app loads
 the built renderer/preload from inside the `asar` — the main process already
 resolves prod paths via `app.isPackaged`, so no dev server is required at
-runtime.
+runtime. The package scripts force `--publish never`, so local/CI packaging stays
+separate from the GitHub Release publishing step.
 
 ## Icons
 
