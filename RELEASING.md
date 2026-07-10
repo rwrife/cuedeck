@@ -92,7 +92,10 @@ The GitHub Actions workflow at
 [`.github/workflows/release.yml`](.github/workflows/release.yml) builds
 Linux/Windows/macOS artifacts on native runners for tags like `v0.1.0`, then
 automatically creates/updates the corresponding GitHub Release and uploads all
-installers as release assets. It still does **not** code-sign or notarize.
+installers as release assets. Artifact versions are derived from the pushed tag
+(`vX.Y.Z` → `X.Y.Z`) during CI, so installer filenames/metadata match the
+release version without needing a manual `package.json` bump commit. It still
+does **not** code-sign or notarize.
 
 ```bash
 # cut a release build
