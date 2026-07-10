@@ -86,13 +86,13 @@ The configuration does **not** perform code signing or notarization:
 These are intentionally deferred; wire in the relevant secrets/config when a
 signing identity is available.
 
-## Optional: build in CI on tag push
+## Automated GitHub release on tag push
 
-A ready-to-enable GitHub Actions workflow lives at
-[`.github/workflows/release.yml`](.github/workflows/release.yml). It builds the
-Linux/Windows/macOS artifacts on their native runners when you push a tag like
-`v0.1.0` and uploads them as workflow artifacts. It does **not** publish a
-GitHub Release or sign anything by default — treat it as a starting point.
+The GitHub Actions workflow at
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds
+Linux/Windows/macOS artifacts on native runners for tags like `v0.1.0`, then
+automatically creates/updates the corresponding GitHub Release and uploads all
+installers as release assets. It still does **not** code-sign or notarize.
 
 ```bash
 # cut a release build
