@@ -51,7 +51,7 @@ jobs:
         run: npm ci
 
       - name: Package
-        run: npm run ${{ matrix.script }}
+        run: npm run ${{ matrix.script }} -- --publish never
         env:
           # Fail loudly instead of silently skipping unsigned builds; signing is
           # explicitly out of scope for this workflow.
