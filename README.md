@@ -118,7 +118,8 @@ npm run package:mac    # dmg + zip (x64 + arm64)
 ```
 
 See **[`RELEASING.md`](RELEASING.md)** for the full build/release process,
-cross-OS caveats, icon replacement, and code-signing notes.
+cross-OS caveats, icon replacement, code-signing notes, and the GitHub tag-based
+release pipeline that publishes downloadable binaries on the Releases page.
 
 ## Project Structure
 

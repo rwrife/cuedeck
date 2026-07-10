@@ -1,11 +1,8 @@
 name: Release
 
-# Build native installers on their respective OSes when a version tag is pushed.
-#
-# This is intentionally a "build + upload artifacts" workflow only: it does NOT
-# create a GitHub Release and does NOT code-sign or notarize (see RELEASING.md).
-# Wire in signing secrets / `softprops/action-gh-release` when you're ready to
-# publish real, signed builds.
+# Build native installers on their respective OSes and publish them on GitHub
+# when a version tag is pushed. Manual runs still produce workflow artifacts for
+# smoke-testing the packaging pipeline without cutting a tag.
 on:
   push:
     tags:
@@ -68,3 +65,30 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+
+  publish:
+    name: publish GitHub release
+    runs-on: ubuntu-latest
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/**/*.AppImage
+            release-assets/**/*.deb
+            release-assets/**/*.exe
+            release-assets/**/*.dmg
+            release-assets/**/*.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
