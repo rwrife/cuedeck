@@ -128,10 +128,14 @@ export function SnippetButton({
         </button>
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="rounded px-2 py-1 text-sm text-deck-muted transition hover:text-deck-text"
+          className={`rounded px-3 py-1 text-base font-bold transition ${
+            expanded
+              ? 'bg-deck-panel text-deck-text'
+              : 'bg-deck-panel text-deck-accent hover:bg-deck-border hover:text-deck-text'
+          }`}
           title={expanded ? 'Collapse' : 'Edit content'}
         >
-          {expanded ? '▾' : '▸'}
+          {expanded ? '▼' : '▶'}
         </button>
         <button
           onClick={() => removeSnippet(cardId, snippet.id)}
