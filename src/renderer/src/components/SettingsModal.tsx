@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import {
   FONT_SIZES,
   THEME_PREFERENCES,
@@ -138,6 +139,9 @@ export function SettingsModal(): JSX.Element | null {
 
   const close = useCallback(() => setOpen(false), [setOpen])
 
+  // Trap focus inside the dialog while open and restore it on close (#39).
+  const trapRef = useFocusTrap<HTMLDivElement>(open)
+
   useEffect(() => {
     if (!open) return
     function onKeyDown(e: KeyboardEvent): void {
@@ -159,6 +163,7 @@ export function SettingsModal(): JSX.Element | null {
       role="presentation"
     >
       <div
+        ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"

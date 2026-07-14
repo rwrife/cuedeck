@@ -159,6 +159,23 @@ Decks are stored as individual JSON files under Electron's `userData` directory:
 
 Each deck is human-readable JSON, so export/backup is just a file copy. You can also use **Export** (deck picker or workspace top bar) to save a deck anywhere via a native save dialog, and **Import…** to load a deck file back in — imported decks are validated and assigned a fresh id so they never collide with existing ones.
 
+## Accessibility & keyboard
+
+CueDeck is built to be driven entirely from the keyboard:
+
+- **Copy hotkeys** — press `1`..`9` to copy the matching snippet on the active
+  card; `←` / `→` step through the running order.
+- **Search / command palette** — `/` (or `Ctrl`/`Cmd`+`K`) opens quick search;
+  `↑` / `↓` to move, `Enter` to jump to a card or copy a snippet, `Esc` to close.
+- **Dialogs & menus** — the Settings and Search dialogs are modal: `Tab` /
+  `Shift`+`Tab` cycle **within** the dialog (focus is trapped so it can't escape
+  behind the overlay), and closing a dialog restores focus to wherever you were
+  before it opened.
+- **Reduced motion** — when your OS "reduce motion" preference is on, CueDeck
+  disables nonessential transitions and animations.
+- **Theming & text scale** — dark/light/system themes and a presenter font-size
+  control live in **Settings** (`⚙`), with contrast tuned for both themes.
+
 ## Roadmap
 
 See the GitHub Issues for the build-out plan. Shipped so far: keyboard-driven
