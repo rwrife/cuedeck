@@ -614,3 +614,97 @@ describe('statusMessage is scoped to the current deck/mode, not leaked across it
     expect(useDeckStore.getState().statusMessage).toBe('Exported to C:\\decks\\deck-1.json')
   })
 })
+
+describe('navigateToBuildStep (#36 Rehearse readiness → Build fix navigation)', () => {
+  function deckWithCard(): Deck {
+    const deck = makeDeck('deck-1')
+    return { ...deck, cards: [{ id: 'card-1', title: '', notes: '', snippets: [] }] }
+  }
+
+  it('switches to Build and makes the given step active', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse', activeCardId: null })
+
+    useDeckStore.getState().navigateToBuildStep('card-1', 'title')
+
+    const state = useDeckStore.getState()
+    expect(state.workspaceMode).toBe('build')
+    expect(state.activeCardId).toBe('card-1')
+  })
+
+  it('arms focusCardId when the focus target is "title" so the title auto-focuses', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse' })
+
+    useDeckStore.getState().navigateToBuildStep('card-1', 'title')
+
+    expect(useDeckStore.getState().focusCardId).toBe('card-1')
+    expect(useDeckStore.getState().focusVariablesPanel).toBe(false)
+  })
+
+  it('arms focusVariablesPanel (not focusCardId) when the focus target is "variables"', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse' })
+
+    useDeckStore.getState().navigateToBuildStep('card-1', 'variables')
+
+    const state = useDeckStore.getState()
+    expect(state.focusVariablesPanel).toBe(true)
+    expect(state.focusCardId).toBeNull()
+    expect(state.activeCardId).toBe('card-1')
+  })
+
+  it('arms neither focus flag when the focus target is null (e.g. a deck-level concern)', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse' })
+
+    useDeckStore.getState().navigateToBuildStep(null, null)
+
+    const state = useDeckStore.getState()
+    expect(state.workspaceMode).toBe('build')
+    expect(state.focusCardId).toBeNull()
+    expect(state.focusVariablesPanel).toBe(false)
+  })
+
+  it('leaves the active step unchanged when cardId is null', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse', activeCardId: 'card-1' })
+
+    useDeckStore.getState().navigateToBuildStep(null, 'variables')
+
+    expect(useDeckStore.getState().activeCardId).toBe('card-1')
+  })
+
+  it('is a no-op when there is no open deck', () => {
+    useDeckStore.setState({ deck: null, workspaceMode: 'library' })
+
+    useDeckStore.getState().navigateToBuildStep('card-1', 'title')
+
+    const state = useDeckStore.getState()
+    expect(state.workspaceMode).toBe('library')
+    expect(state.focusCardId).toBeNull()
+  })
+
+  it('does not set activeCardId to an id that no longer exists in the deck', () => {
+    useDeckStore.setState({ deck: deckWithCard(), workspaceMode: 'rehearse', activeCardId: 'card-1' })
+
+    useDeckStore.getState().navigateToBuildStep('does-not-exist', 'title')
+
+    const state = useDeckStore.getState()
+    expect(state.activeCardId).toBe('card-1') // unchanged
+    expect(state.focusCardId).toBeNull() // never focuses a nonexistent card
+  })
+})
+
+describe('clearFocusVariablesPanel (#36)', () => {
+  it('clears a pending focusVariablesPanel request', () => {
+    useDeckStore.setState({ focusVariablesPanel: true })
+
+    useDeckStore.getState().clearFocusVariablesPanel()
+
+    expect(useDeckStore.getState().focusVariablesPanel).toBe(false)
+  })
+
+  it('is a no-op when there is nothing pending', () => {
+    useDeckStore.setState({ focusVariablesPanel: false })
+
+    useDeckStore.getState().clearFocusVariablesPanel()
+
+    expect(useDeckStore.getState().focusVariablesPanel).toBe(false)
+  })
+})

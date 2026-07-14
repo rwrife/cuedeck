@@ -87,6 +87,15 @@ interface DeckState {
    * by the component that performs the focus.
    */
   focusCardId: string | null
+  /**
+   * One-shot request (#36) mirroring {@link focusCardId}: true when Build's
+   * deck-level Variables disclosure should auto-expand the next time it
+   * renders — set when a Rehearse readiness warning about a missing
+   * variable value navigates back to Build, so the fix location is visible
+   * without a fragile DOM query/scroll. Consumed (cleared) by
+   * `VariablesPanel`.
+   */
+  focusVariablesPanel: boolean
 
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
@@ -169,6 +178,20 @@ interface DeckState {
    * presenting.
    */
   exitPresent: () => void
+  /**
+   * Navigate from a Rehearse readiness warning straight to the exact Build
+   * location that resolves it (#36): switches to Build, makes `cardId` the
+   * active step (a no-op if the id no longer exists), and — depending on
+   * `focusTarget` — arms the same one-shot focus mechanism Build already
+   * uses for newly created content (`'title'` → {@link focusCardId}) or
+   * signals the deck-level Variables disclosure to auto-expand
+   * (`'variables'` → {@link focusVariablesPanel}). A no-op without an open
+   * deck. `cardId` may be `null` for a deck-level concern (e.g. no steps
+   * yet), in which case only the mode switches.
+   */
+  navigateToBuildStep: (cardId: string | null, focusTarget: 'title' | 'variables' | null) => void
+  /** Consume the pending {@link focusVariablesPanel} request. */
+  clearFocusVariablesPanel: () => void
 
   // Card ops
   /**
@@ -357,6 +380,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     statusMessage: null,
     statusTone: 'neutral',
     focusCardId: null,
+    focusVariablesPanel: false,
 
     refreshSummaries: async () => {
       const summaries = await window.cuedeck.decks.list()
@@ -649,6 +673,22 @@ export const useDeckStore = create<DeckState>((set, get) => {
       if (next === workspaceMode) return
       set({ workspaceMode: next })
       void window.cuedeck.window.setPresenter(false)
+    },
+
+    navigateToBuildStep: (cardId, focusTarget) => {
+      const { deck } = get()
+      if (!deck) return
+      const exists = cardId !== null && deck.cards.some((c) => c.id === cardId)
+      set({
+        workspaceMode: 'build',
+        activeCardId: exists ? cardId : get().activeCardId,
+        focusCardId: exists && focusTarget === 'title' ? cardId : null,
+        focusVariablesPanel: focusTarget === 'variables'
+      })
+    },
+
+    clearFocusVariablesPanel: () => {
+      if (get().focusVariablesPanel) set({ focusVariablesPanel: false })
     },
 
     addCard: () => {

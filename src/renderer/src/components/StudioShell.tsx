@@ -4,7 +4,7 @@ import { primaryActionMode, type WorkspaceMode } from '@shared/workspace'
 import { ModeRail } from './ModeRail'
 import { Library } from './Library'
 import { DeckWorkspace } from './DeckWorkspace'
-import { RehearsePlaceholder } from './RehearsePlaceholder'
+import { RehearseView } from './RehearseView'
 import { OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 import { OPEN_LIVE_CONTROL_EVENT } from './LiveControlPanel'
@@ -232,7 +232,7 @@ export function StudioShell(): JSX.Element {
       <div className="flex min-h-0 flex-1 flex-col">
         {workspaceMode === 'library' && <Library />}
         {workspaceMode === 'build' && deck && <DeckWorkspace />}
-        {workspaceMode === 'rehearse' && deck && <RehearsePlaceholder />}
+        {workspaceMode === 'rehearse' && deck && <RehearseView />}
       </div>
     </div>
   )

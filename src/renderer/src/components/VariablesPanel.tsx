@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { collectReferencedVariables } from '@shared/variables'
 import { IconButton } from './ui/IconButton'
@@ -93,6 +93,10 @@ function VariableRow({
  * substitutes at copy/drag time. Collapsible to stay out of the way; shows a
  * count badge and a one-click "Add referenced" action that scoops up every
  * `{{variable}}` used anywhere in the deck that isn't defined yet.
+ *
+ * Also auto-expands on the store's one-shot `focusVariablesPanel` request
+ * (#36): clicking a Rehearse "missing variable" readiness warning navigates
+ * here and arms that flag so the fix location is visible immediately.
  */
 export function VariablesPanel(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
@@ -103,9 +107,21 @@ export function VariablesPanel(): JSX.Element {
   const setVariable = useDeckStore((s) => s.setVariable)
   const addReferencedVariables = useDeckStore((s) => s.addReferencedVariables)
   const setStatusMessage = useDeckStore((s) => s.setStatusMessage)
+  // One-shot request (#36): auto-expand when a Rehearse readiness warning
+  // about a missing variable value navigates back here, so the fix location
+  // is visible without a fragile DOM query/scroll.
+  const focusVariablesPanel = useDeckStore((s) => s.focusVariablesPanel)
+  const clearFocusVariablesPanel = useDeckStore((s) => s.clearFocusVariablesPanel)
 
   const [open, setOpen] = useState(false)
   const [newName, setNewName] = useState('')
+
+  useEffect(() => {
+    if (focusVariablesPanel) {
+      setOpen(true)
+      clearFocusVariablesPanel()
+    }
+  }, [focusVariablesPanel, clearFocusVariablesPanel])
 
   const entries = Object.entries(variables)
   const count = entries.length
