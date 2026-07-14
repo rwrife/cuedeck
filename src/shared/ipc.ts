@@ -12,6 +12,8 @@ export const IPC = {
   deckSave: 'deck:save',
   deckCreate: 'deck:create',
   deckDelete: 'deck:delete',
+  deckRename: 'deck:rename',
+  deckDuplicate: 'deck:duplicate',
   deckExport: 'deck:export',
   deckImport: 'deck:import',
 

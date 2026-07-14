@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { Deck, DeckSummary, ExportResult, ImportResult } from '../shared/types'
+import type {
+  Deck,
+  DeckActionResult,
+  DeckSummary,
+  ExportResult,
+  ImportResult
+} from '../shared/types'
+import type { NewDemoChoice } from '../shared/library'
 import type { Settings } from '../shared/settings'
 import type { LiveState } from '../shared/liveControl'
 
@@ -56,8 +63,13 @@ const api = {
     list: (): Promise<DeckSummary[]> => ipcRenderer.invoke(IPC.deckList),
     load: (id: string): Promise<Deck | null> => ipcRenderer.invoke(IPC.deckLoad, id),
     save: (deck: Deck): Promise<Deck> => ipcRenderer.invoke(IPC.deckSave, deck),
-    create: (name: string): Promise<Deck> => ipcRenderer.invoke(IPC.deckCreate, name),
+    create: (name: string, template?: NewDemoChoice): Promise<Deck> =>
+      ipcRenderer.invoke(IPC.deckCreate, name, template),
     remove: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.deckDelete, id),
+    rename: (id: string, name: string): Promise<DeckActionResult> =>
+      ipcRenderer.invoke(IPC.deckRename, id, name),
+    duplicate: (id: string): Promise<DeckActionResult> =>
+      ipcRenderer.invoke(IPC.deckDuplicate, id),
     export: (id: string): Promise<ExportResult> => ipcRenderer.invoke(IPC.deckExport, id),
     import: (): Promise<ImportResult> => ipcRenderer.invoke(IPC.deckImport)
   },

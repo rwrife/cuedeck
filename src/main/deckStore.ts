@@ -5,11 +5,13 @@ import { IPC } from '../shared/ipc'
 import {
   CURRENT_SCHEMA_VERSION,
   type Deck,
+  type DeckActionResult,
   type DeckSummary,
   type ExportResult,
   type ImportResult
 } from '../shared/types'
-import { createEmptyDeck, generateId, normalizeDeck, validateDeck } from '../shared/deck'
+import { generateId, normalizeDeck, validateDeck } from '../shared/deck'
+import { blankDemoDeck, starterTemplateDeck, type NewDemoChoice } from '../shared/library'
 
 /**
  * Deck persistence layer. Decks are stored as individual JSON files under
@@ -35,6 +37,17 @@ function deckPath(id: string): string {
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+/** Build the lightweight {@link DeckSummary} for a deck at a known path. */
+function summaryFor(deck: Deck, path: string): DeckSummary {
+  return {
+    id: deck.id,
+    name: deck.name,
+    filePath: path,
+    cardCount: deck.cards?.length ?? 0,
+    updatedAt: deck.updatedAt
+  }
 }
 
 /**
@@ -110,12 +123,18 @@ export function registerDeckHandlers(): void {
     return toSave
   })
 
-  ipcMain.handle(IPC.deckCreate, async (_evt, name: string): Promise<Deck> => {
-    await ensureDir()
-    const deck = createEmptyDeck(name)
-    await fs.writeFile(deckPath(deck.id), JSON.stringify(deck, null, 2), 'utf-8')
-    return deck
-  })
+  ipcMain.handle(
+    IPC.deckCreate,
+    async (_evt, name: string, template?: NewDemoChoice): Promise<Deck> => {
+      await ensureDir()
+      // A blank demo is seeded with a single focused first card so the user
+      // never lands on an inert empty editor; the starter template ships a
+      // small self-explanatory deck (#34). Import has its own handler.
+      const deck = template === 'template' ? starterTemplateDeck(name) : blankDemoDeck(name)
+      await fs.writeFile(deckPath(deck.id), JSON.stringify(deck, null, 2), 'utf-8')
+      return deck
+    }
+  )
 
   ipcMain.handle(IPC.deckDelete, async (_evt, id: string): Promise<boolean> => {
     try {
@@ -124,6 +143,47 @@ export function registerDeckHandlers(): void {
     } catch {
       return false
     }
+  })
+
+  // Rename a deck in place: load, re-stamp the name + updatedAt, and persist.
+  ipcMain.handle(
+    IPC.deckRename,
+    async (_evt, id: string, name: string): Promise<DeckActionResult> => {
+      await ensureDir()
+      const trimmed = name.trim()
+      if (!trimmed) return { ok: false, error: 'Deck name cannot be empty.' }
+      const deck = await readDeckFile(deckPath(id))
+      if (!deck) return { ok: false, error: 'Deck not found.' }
+      const renamed: Deck = { ...deck, name: trimmed, updatedAt: nowIso() }
+      try {
+        await fs.writeFile(deckPath(id), JSON.stringify(renamed, null, 2), 'utf-8')
+      } catch (err) {
+        return { ok: false, error: `Could not rename deck: ${(err as Error).message}` }
+      }
+      return { ok: true, summary: summaryFor(renamed, deckPath(id)) }
+    }
+  )
+
+  // Duplicate a deck: deep copy under a fresh id + "(copy)" name, so the new
+  // deck is independent of the original and immediately openable.
+  ipcMain.handle(IPC.deckDuplicate, async (_evt, id: string): Promise<DeckActionResult> => {
+    await ensureDir()
+    const deck = await readDeckFile(deckPath(id))
+    if (!deck) return { ok: false, error: 'Deck not found.' }
+    const now = nowIso()
+    const copy: Deck = {
+      ...deck,
+      id: generateId(),
+      name: `${deck.name} (copy)`,
+      createdAt: now,
+      updatedAt: now
+    }
+    try {
+      await fs.writeFile(deckPath(copy.id), JSON.stringify(copy, null, 2), 'utf-8')
+    } catch (err) {
+      return { ok: false, error: `Could not duplicate deck: ${(err as Error).message}` }
+    }
+    return { ok: true, summary: summaryFor(copy, deckPath(copy.id)) }
   })
 
   // Export a deck to an arbitrary .json file via a native save dialog.
