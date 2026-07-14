@@ -78,3 +78,12 @@ export function stepTitleFieldId(cardId: string): string {
 export function contentLabelFieldId(snippetId: string): string {
   return `cuedeck-content-label-${snippetId}`
 }
+
+/**
+ * Stable DOM id for a deck variable's value input, so a readiness warning that
+ * links to a missing variable (#36) can scroll to and focus the exact field the
+ * user needs to fill.
+ */
+export function variableValueFieldId(name: string): string {
+  return `cuedeck-variable-value-${name}`
+}
