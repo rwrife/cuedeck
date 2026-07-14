@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
@@ -28,14 +28,21 @@ interface Props {
   dropBelow: boolean
   /** Row is the one being dragged; dim it. */
   dragging: boolean
+  /** This item was just created (#35): mount expanded and focus/select its
+   *  label immediately, instead of leaving new content collapsed and
+   *  requiring a second click before it can be edited. */
+  autoFocus?: boolean
+  /** Called once autoFocus has been applied, so the parent can clear its
+   *  pending-focus id and avoid refocusing on a later re-render. */
+  onAutoFocused?: () => void
 }
 
 /**
- * The core interaction unit. Each snippet is:
+ * The core interaction unit — one piece of paste-ready content. Each item is:
  *  - editable (label + content)
  *  - one-click copy to clipboard (with a "Copied ✓" flash)
  *  - draggable OUT: drag the numbered handle straight into another app's field
- *  - reorderable: drag the dedicated grip (⠿) to sort within the card
+ *  - reorderable: drag the dedicated grip (⠿) to sort within the step
  *
  * The two drags are deliberately separate affordances with separate data:
  * the numbered handle emits `text/plain` (external paste target), while the
@@ -50,7 +57,9 @@ export function SnippetButton({
   targetHandlers,
   dropAbove,
   dropBelow,
-  dragging
+  dragging,
+  autoFocus,
+  onAutoFocused
 }: Props): JSX.Element {
   const updateSnippet = useDeckStore((s) => s.updateSnippet)
   const removeSnippet = useDeckStore((s) => s.removeSnippet)
@@ -61,7 +70,8 @@ export function SnippetButton({
   // Flash "Copied ✓" whenever this snippet is the last-copied one — whether the
   // copy came from this button or from a number-key hotkey.
   const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(autoFocus ?? false)
+  const labelRef = useRef<HTMLInputElement | null>(null)
 
   // Which `{{variables}}` this snippet references, split into filled vs unset.
   const { used, missing } = classifyVariables(snippet.content, variables)
@@ -76,6 +86,19 @@ export function SnippetButton({
       }
     }
   }, [snippet.id, clearLastCopied])
+
+  // Expand + focus/select the label the instant this item was just created
+  // (#35) — new paste-ready content must never sit collapsed and unfocused.
+  useEffect(() => {
+    if (autoFocus) {
+      setExpanded(true)
+      labelRef.current?.focus()
+      labelRef.current?.select()
+      onAutoFocused?.()
+    }
+    // Only re-run when the autoFocus flag itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFocus])
 
   function copy(): void {
     void copySnippet(cardId, snippet.id)
@@ -122,9 +145,11 @@ export function SnippetButton({
           {index + 1} <ArrowUpRightIcon />
         </span>
         <input
+          ref={labelRef}
           value={snippet.label}
           onChange={(e) => updateSnippet(cardId, snippet.id, { label: e.target.value })}
           placeholder="Label…"
+          aria-label="Paste-ready content label"
           className="flex-1 bg-transparent text-sm font-medium outline-none"
         />
         <Button
@@ -144,7 +169,7 @@ export function SnippetButton({
           onClick={() => setExpanded((v) => !v)}
         />
         <IconButton
-          label="Delete snippet"
+          label="Delete paste-ready content"
           icon={<CloseIcon />}
           size="sm"
           onClick={() => removeSnippet(cardId, snippet.id)}
@@ -187,6 +212,7 @@ export function SnippetButton({
           value={snippet.content}
           onChange={(e) => updateSnippet(cardId, snippet.id, { content: e.target.value })}
           placeholder="The text you paste into your demo app…"
+          aria-label="Paste-ready content"
           rows={4}
           className="w-full resize-y rounded-b-lg border-t border-deck-border bg-deck-panel p-3 font-mono text-sm outline-none placeholder:text-deck-muted"
         />

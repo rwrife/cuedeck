@@ -8,6 +8,7 @@ import { RehearsePlaceholder } from './RehearsePlaceholder'
 import { OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 import { OPEN_LIVE_CONTROL_EVENT } from './LiveControlPanel'
+import { OPEN_BUILD_ADVANCED_EVENT } from './BuildAdvancedPanel'
 import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import { KeyboardHint } from './ui/KeyboardHint'
@@ -16,6 +17,7 @@ import { saveStatusLabel } from '../lib/ui/saveStatusLabel'
 import {
   ClapperboardIcon,
   CloseIcon,
+  MoreIcon,
   PinIcon,
   SearchIcon,
   SettingsIcon,
@@ -136,53 +138,85 @@ export function StudioShell(): JSX.Element {
         status={headerStatus}
         secondaryActions={
           hasDeckContext ? (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<SearchIcon />}
-                onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
-                title="Search cards and snippets (/ or Ctrl/Cmd+K)"
-              >
-                Search
-                <KeyboardHint keys={['/']} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => deck && exportDeck(deck.id)}
-                title="Export this deck to a .json file"
-              >
-                Export
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<SlidersIcon />}
-                active={liveActive}
-                activeTone="success"
-                onClick={() => window.dispatchEvent(new Event(OPEN_LIVE_CONTROL_EVENT))}
-                title="Live Control — let an MCP client drive this demo (opt-in, loopback-only)"
-              >
-                Live
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<PinIcon />}
-                active={pinned}
-                onClick={togglePin}
-                title="Keep window on top during your demo"
-              >
-                {pinned ? 'Pinned' : 'Pin on top'}
-              </Button>
-              <IconButton
-                label="Close deck (back to Library)"
-                icon={<CloseIcon />}
-                size="sm"
-                onClick={closeDeck}
-              />
-            </>
+            workspaceMode === 'build' ? (
+              // Build (#35 guided Build workspace): keep Search — it's core to
+              // navigating the running order — visible and prominent, but tuck
+              // the technical/infrequent actions (export, live control, pin)
+              // behind one "Build tools" disclosure so they never compete with
+              // the single primary next action (Rehearse).
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SearchIcon />}
+                  onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+                  title="Search steps and paste-ready content (/ or Ctrl/Cmd+K)"
+                >
+                  Search
+                  <KeyboardHint keys={['/']} />
+                </Button>
+                <IconButton
+                  label="Build tools — export, live control, keep on top"
+                  icon={<MoreIcon />}
+                  size="sm"
+                  onClick={() => window.dispatchEvent(new Event(OPEN_BUILD_ADVANCED_EVENT))}
+                />
+                <IconButton
+                  label="Close deck (back to Library)"
+                  icon={<CloseIcon />}
+                  size="sm"
+                  onClick={closeDeck}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SearchIcon />}
+                  onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+                  title="Search cards and snippets (/ or Ctrl/Cmd+K)"
+                >
+                  Search
+                  <KeyboardHint keys={['/']} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deck && exportDeck(deck.id)}
+                  title="Export this deck to a .json file"
+                >
+                  Export
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SlidersIcon />}
+                  active={liveActive}
+                  activeTone="success"
+                  onClick={() => window.dispatchEvent(new Event(OPEN_LIVE_CONTROL_EVENT))}
+                  title="Live Control — let an MCP client drive this demo (opt-in, loopback-only)"
+                >
+                  Live
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<PinIcon />}
+                  active={pinned}
+                  onClick={togglePin}
+                  title="Keep window on top during your demo"
+                >
+                  {pinned ? 'Pinned' : 'Pin on top'}
+                </Button>
+                <IconButton
+                  label="Close deck (back to Library)"
+                  icon={<CloseIcon />}
+                  size="sm"
+                  onClick={closeDeck}
+                />
+              </>
+            )
           ) : undefined
         }
         primaryAction={

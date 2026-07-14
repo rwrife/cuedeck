@@ -293,12 +293,38 @@ export function SparklesIcon(props: IconProps): JSX.Element {
   )
 }
 
-/** Library (#34): "New Demo" primary action. */
+/** Add a new item — the Library "New Demo" primary action (#34) and the
+ *  guided Build workspace's add-step / add-content actions (#35). */
 export function PlusIcon(props: IconProps): JSX.Element {
   return (
     <Icon {...props}>
       <path d="M12 5v14" />
       <path d="M5 12h14" />
+    </Icon>
+  )
+}
+
+/** Guided Build workspace (#35): the "more"/overflow trigger for advanced,
+ *  infrequent actions (export, live control, keep-on-top) tucked out of the
+ *  primary authoring flow. */
+export function MoreIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </Icon>
+  )
+}
+
+/** Guided Build workspace (#35): contextual "how do I format this" disclosure
+ *  for the Markdown talking-points editor. */
+export function HelpIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
     </Icon>
   )
 }

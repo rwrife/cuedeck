@@ -171,7 +171,13 @@ interface DeckState {
   exitPresent: () => void
 
   // Card ops
-  addCard: () => void
+  /**
+   * Add a new step (internally a `CueCard`) to the end of the running order,
+   * make it active, and return its id (#35) so the calling UI can focus its
+   * title the instant it renders — a newly created step must never sit
+   * unfocused waiting for a second click.
+   */
+  addCard: () => string
   updateCard: (cardId: string, patch: Partial<Omit<CueCard, 'id'>>) => void
   removeCard: (cardId: string) => void
   setActiveCard: (cardId: string) => void
@@ -204,7 +210,13 @@ interface DeckState {
   clearLastCopied: (snippetId: string) => void
 
   // Snippet ops
-  addSnippet: (cardId: string) => void
+  /**
+   * Add a new paste-ready content item (internally a `Snippet`) to `cardId`
+   * and return its id, or `null` when `cardId` doesn't match any step (#35).
+   * The returned id lets the calling UI immediately expand and focus the new
+   * item's label instead of leaving it collapsed and unfocused.
+   */
+  addSnippet: (cardId: string) => string | null
   updateSnippet: (cardId: string, snippetId: string, patch: Partial<Omit<Snippet, 'id'>>) => void
   removeSnippet: (cardId: string, snippetId: string) => void
   /** Move a snippet within a card from one position to another. */
@@ -626,8 +638,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
       const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }
       mutate((d) => ({ ...d, cards: [...d.cards, card] }))
       // Focus the new card immediately (#34/Accessibility: focus moves to
-      // newly created content) rather than leaving the user to hunt for it.
+      // newly created content) rather than leaving the user to hunt for it,
+      // and return its id so in-Build callers (#35) can also act on it.
       set({ activeCardId: card.id, focusCardId: card.id })
+      return card.id
     },
 
     updateCard: (cardId, patch) =>
@@ -700,6 +714,12 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     addSnippet: (cardId) => {
+      // Guard against an unknown/stale cardId: no card matched, so don't
+      // spread a no-op deck copy through mutate() (which would arm a save
+      // for nothing) and don't report a bogus new id to the caller.
+      const { deck } = get()
+      if (!deck?.cards.some((c) => c.id === cardId)) return null
+
       const snippet: Snippet = { id: uid(), label: 'New Snippet', content: '' }
       mutate((d) => ({
         ...d,
@@ -707,6 +727,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
           c.id === cardId ? { ...c, snippets: [...c.snippets, snippet] } : c
         )
       }))
+      return snippet.id
     },
 
     updateSnippet: (cardId, snippetId, patch) =>

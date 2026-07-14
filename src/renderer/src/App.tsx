@@ -9,6 +9,7 @@ import { PresenterView } from './components/PresenterView'
 import { CommandPalette } from './components/CommandPalette'
 import { SettingsModal } from './components/SettingsModal'
 import { LiveControlPanel } from './components/LiveControlPanel'
+import { BuildAdvancedPanel } from './components/BuildAdvancedPanel'
 import { initLiveControlBridge } from './liveControlClient'
 
 /**
@@ -16,7 +17,8 @@ import { initLiveControlBridge } from './liveControlClient'
  * Rehearse — see {@link StudioShell}) for every mode except Present, which
  * takes over as its own compact, chrome-free surface (#33). Loads user
  * settings once and keeps the document theme + font scale in sync (#8),
- * mounts the app-wide {@link SettingsModal} and {@link LiveControlPanel}, and
+ * mounts the app-wide {@link SettingsModal}, {@link LiveControlPanel}, and
+ * Build's {@link BuildAdvancedPanel} (export/live-control/pin, #35), and
  * wires the renderer into the live demo control bridge (#17) so it can
  * publish state + apply remote commands while the app runs.
  */
@@ -74,6 +76,7 @@ export default function App(): JSX.Element {
       {workspaceMode === 'present' && deck ? <PresenterView /> : <StudioShell />}
       <SettingsModal />
       <LiveControlPanel />
+      <BuildAdvancedPanel />
       {/* Quick-search / command palette overlay (/ or Ctrl/Cmd+K), available
           in Build and Rehearse — not shown over the compact Present surface. */}
       {deck && workspaceMode !== 'present' && <CommandPalette />}

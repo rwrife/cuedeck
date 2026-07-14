@@ -215,6 +215,52 @@ describe('deleteDeck safety for the open deck (#38)', () => {
   })
 })
 
+describe('addCard / addSnippet return the new id for immediate focus (#35)', () => {
+  it('addCard returns the new step id and makes it active', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+
+    const id = useDeckStore.getState().addCard()
+
+    expect(typeof id).toBe('string')
+    expect(useDeckStore.getState().activeCardId).toBe(id)
+    expect(useDeckStore.getState().deck?.cards.map((c) => c.id)).toEqual([id])
+  })
+
+  it('addCard returns a distinct id for each new step', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+
+    const first = useDeckStore.getState().addCard()
+    const second = useDeckStore.getState().addCard()
+
+    expect(first).not.toBe(second)
+    expect(useDeckStore.getState().deck?.cards.map((c) => c.id)).toEqual([first, second])
+  })
+
+  it('addSnippet returns the new paste-ready content id when the card exists', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+    const cardId = useDeckStore.getState().addCard()
+
+    const snippetId = useDeckStore.getState().addSnippet(cardId)
+
+    expect(typeof snippetId).toBe('string')
+    const card = useDeckStore.getState().deck?.cards.find((c) => c.id === cardId)
+    expect(card?.snippets.map((s) => s.id)).toEqual([snippetId])
+  })
+
+  it('addSnippet returns null and does not mutate the deck for an unknown cardId', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+    useDeckStore.getState().addCard()
+    const before = useDeckStore.getState().deck
+
+    const result = useDeckStore.getState().addSnippet('does-not-exist')
+
+    expect(result).toBeNull()
+    // No spurious edit/save should have been armed for a no-op mutation.
+    expect(useDeckStore.getState().deck).toBe(before)
+    expect(saveMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('open/create flush the outgoing deck before switching (#33/#38)', () => {
   it('flushes the previous deck\'s pending edit before opening another', async () => {
     useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
