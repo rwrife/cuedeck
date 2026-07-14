@@ -5,6 +5,7 @@ import { MarkdownNotes } from './MarkdownNotes'
 import { VariablesPanel } from './VariablesPanel'
 import { useDragSort } from '../hooks/useDragSort'
 import { BUILD_LANGUAGE, stepTitleFieldId } from '@shared/buildLanguage'
+import { REVEAL_VARIABLE_EVENT } from '../store/deckStore'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
 const SNIPPET_DND_TYPE = 'application/x-cuedeck-snippet'
@@ -33,6 +34,16 @@ export function CardEditor(): JSX.Element {
   const [notesPreview, setNotesPreview] = useState(false)
   // Contextual advanced-tools disclosure (#35): variables + Markdown help.
   const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  // A readiness warning that links to a variable (#36) reveals the advanced
+  // disclosure (which hosts the variables panel) so the field is reachable.
+  useEffect(() => {
+    function onReveal(): void {
+      setAdvancedOpen(true)
+    }
+    window.addEventListener(REVEAL_VARIABLE_EVENT, onReveal)
+    return () => window.removeEventListener(REVEAL_VARIABLE_EVENT, onReveal)
+  }, [])
 
   const titleRef = useRef<HTMLInputElement | null>(null)
 

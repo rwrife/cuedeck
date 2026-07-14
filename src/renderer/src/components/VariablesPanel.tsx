@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { collectReferencedVariables } from '@shared/variables'
+import { variableValueFieldId } from '@shared/buildLanguage'
+import { REVEAL_VARIABLE_EVENT } from '../store/deckStore'
 
 /**
  * One editable variable row: key input, value input, delete. The key is only
@@ -56,6 +58,7 @@ function VariableRow({
       />
       <span className="text-deck-muted">=</span>
       <input
+        id={variableValueFieldId(name)}
         value={value}
         onChange={(e) => setVariable(name, e.target.value)}
         placeholder="value…"
@@ -106,6 +109,27 @@ export function VariablesPanel(): JSX.Element {
 
   const [open, setOpen] = useState(false)
   const [newName, setNewName] = useState('')
+
+  // React to a readiness warning that links here (#36): open the panel and
+  // focus the offending variable's value field so the user lands on the fix.
+  useEffect(() => {
+    function onReveal(e: Event): void {
+      const name = (e as CustomEvent<{ name?: string }>).detail?.name
+      setOpen(true)
+      if (!name) return
+      // Wait a frame so the collapsed panel has mounted the fields.
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(variableValueFieldId(name))
+        if (el instanceof HTMLInputElement) {
+          el.scrollIntoView({ block: 'center' })
+          el.focus()
+          el.select()
+        }
+      })
+    }
+    window.addEventListener(REVEAL_VARIABLE_EVENT, onReveal)
+    return () => window.removeEventListener(REVEAL_VARIABLE_EVENT, onReveal)
+  }, [])
 
   const entries = Object.entries(variables)
   const count = entries.length

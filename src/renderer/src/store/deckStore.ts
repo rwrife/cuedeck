@@ -12,6 +12,7 @@ import {
   resolveModeRequest,
   windowModeFor
 } from '@shared/workspace'
+import type { ReadinessFix } from '@shared/readiness'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import type { NewDemoChoice } from '@shared/library'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
@@ -120,6 +121,22 @@ interface DeckState {
    */
   exitPresent: () => void
 
+  /**
+   * Enter the Present workspace directly from Rehearse (#36). A thin wrapper
+   * over {@link DeckState.setWorkspace}('present') so the Rehearse preflight can
+   * expose a single, clear "Start Presenting" action that works even when the
+   * deck has readiness warnings (warnings inform, they do not block).
+   */
+  startPresenting: () => void
+
+  /**
+   * Navigate to the exact Build location that resolves a readiness warning
+   * (#36): switch to the Build workspace and either focus the offending step or
+   * open the deck variables and focus the named variable. Never mutates the
+   * deck — it only moves the user to where they can fix the concern.
+   */
+  focusBuildTarget: (fix: ReadinessFix) => void
+
   /** Clear a consumed autofocus request (#35). */
   clearFocusRequest: () => void
 
@@ -189,6 +206,13 @@ let copyFlashTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Duration of the "Copied ✓" flash, in ms. Shared by button + hotkeys. */
 export const COPY_FLASH_MS = 1200
+
+/**
+ * DOM event dispatched by {@link DeckState.focusBuildTarget} when a readiness
+ * warning links to a deck variable (#36). The Build editor listens for it to
+ * open the advanced-tools disclosure and focus the named variable value.
+ */
+export const REVEAL_VARIABLE_EVENT = 'cuedeck:reveal-variable'
 
 export const useDeckStore = create<DeckState>((set, get) => {
   /** Debounced persistence — called after any mutation. */
@@ -404,6 +428,33 @@ export const useDeckStore = create<DeckState>((set, get) => {
       set({ workspace: modeAfterExitPresent(), mode: 'edit' })
       // Restore the pre-presenter bounds + always-on-top state.
       void window.cuedeck.window.setPresenter(false)
+    },
+
+    startPresenting: () => {
+      // Readiness warnings inform but never block (#36 acceptance criteria):
+      // this just enters Present regardless of the preflight result.
+      get().setWorkspace('present')
+    },
+
+    focusBuildTarget: (fix) => {
+      const { deck } = get()
+      if (!deck) return
+      // Move into Build first so the target location is actually mounted.
+      get().setWorkspace('build')
+      if (fix.target === 'step') {
+        if (deck.cards.some((c) => c.id === fix.cardId)) {
+          set({ activeCardId: fix.cardId })
+        }
+      } else {
+        // Ask the Build editor to reveal the variables panel and focus the
+        // named variable. Dispatched as a DOM event so the store stays DOM-free
+        // and doesn't need refs into the editor tree.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent(REVEAL_VARIABLE_EVENT, { detail: { name: fix.name } })
+          )
+        }
+      }
     },
 
     clearFocusRequest: () => set({ focusRequest: null }),
