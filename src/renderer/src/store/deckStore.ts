@@ -3,6 +3,15 @@ import type { CueCard, Deck, DeckSummary, Snippet } from '@shared/types'
 import { CURRENT_SCHEMA_VERSION } from '@shared/types'
 import { nextCardId } from '@shared/hotkeys'
 import { type DeckMode, toggleMode as flipMode } from '@shared/presenter'
+import {
+  type WorkspaceMode,
+  canEnterMode,
+  modeAfterCloseDeck,
+  modeAfterExitPresent,
+  modeAfterOpenDeck,
+  resolveModeRequest,
+  windowModeFor
+} from '@shared/workspace'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
@@ -33,6 +42,14 @@ interface DeckState {
    */
   mode: DeckMode
   /**
+   * Active Studio workspace mode (#33): `library`, `build`, `rehearse`, or
+   * `present`. `library` is always available; the deck-specific modes are only
+   * reachable while a deck is open. This drives the Studio shell navigation,
+   * while {@link DeckState.mode} continues to drive the compact presenter
+   * window layout (and stays derived from the workspace mode).
+   */
+  workspace: WorkspaceMode
+  /**
    * Id of the snippet most recently copied, used to flash "Copied ✓" on the
    * targeted `SnippetButton` when a copy is triggered externally (e.g. via the
    * number-key hotkeys). Cleared back to null after the flash window.
@@ -62,6 +79,19 @@ interface DeckState {
   setMode: (mode: DeckMode) => void
   /** Convenience toggle between edit and presenter modes. */
   toggleMode: () => void
+
+  // Studio shell navigation (#33)
+  /**
+   * Request a workspace mode. Deck-specific modes are ignored when no deck is
+   * open (the shell stays in the Library). Entering/leaving `present` drives
+   * the presenter window side effects, exactly as {@link DeckState.setMode}.
+   */
+  setWorkspace: (mode: WorkspaceMode) => void
+  /**
+   * Exit the Present workspace back to Rehearse, restoring the prior window
+   * bounds and always-on-top state via the presenter window IPC.
+   */
+  exitPresent: () => void
 
   // Card ops
   addCard: () => void
@@ -188,6 +218,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     loading: false,
     saving: false,
     mode: 'edit',
+    workspace: 'library',
     lastCopiedSnippetId: null,
     statusMessage: null,
 
@@ -212,14 +243,18 @@ export const useDeckStore = create<DeckState>((set, get) => {
       set({
         deck,
         loading: false,
-        activeCardId: deck?.cards[0]?.id ?? null
+        activeCardId: deck?.cards[0]?.id ?? null,
+        // Opening a deck moves the shell from Library into Build (#33).
+        workspace: deck ? modeAfterOpenDeck() : get().workspace,
+        mode: 'edit'
       })
     },
 
     createDeck: async (name) => {
       const deck = await window.cuedeck.decks.create(name)
       await get().refreshSummaries()
-      set({ deck, activeCardId: null })
+      // A freshly created deck is open, so land the user in Build (#33).
+      set({ deck, activeCardId: null, workspace: modeAfterOpenDeck(), mode: 'edit' })
     },
 
     deleteDeck: async (id) => {
@@ -230,12 +265,17 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     closeDeck: () => {
-      // Leaving a deck always returns to the full-chrome picker; make sure we
-      // don't strand the user in a tiny always-on-top presenter window.
+      // Leaving a deck always returns to the full-chrome Library; make sure we
+      // don't strand the user in a tiny always-on-top presenter window (#33).
       if (get().mode !== 'edit') {
         void window.cuedeck.window.setPresenter(false)
       }
-      set({ deck: null, activeCardId: null, mode: 'edit' })
+      set({
+        deck: null,
+        activeCardId: null,
+        mode: 'edit',
+        workspace: modeAfterCloseDeck()
+      })
     },
 
     exportDeck: async (id) => {
@@ -266,12 +306,36 @@ export const useDeckStore = create<DeckState>((set, get) => {
     setMode: (mode) => {
       if (get().mode === mode) return
       set({ mode })
+      // Keep the Studio workspace in sync so the shell rail reflects the
+      // presenter window state driven by hotkeys / live control (#33). Exiting
+      // the presenter window lands on Rehearse; entering it selects Present.
+      set({ workspace: mode === 'present' ? 'present' : modeAfterExitPresent() })
       // Fire-and-forget the window side effects; the renderer layout switches
       // immediately regardless of how the OS honors resize/always-on-top.
       void window.cuedeck.window.setPresenter(mode === 'present')
     },
 
     toggleMode: () => get().setMode(flipMode(get().mode)),
+
+    setWorkspace: (mode) => {
+      const { deck, workspace } = get()
+      const target = resolveModeRequest(mode, deck !== null)
+      if (target === workspace) return
+      // Ignore deck-specific requests with no deck open (guarded above, but be
+      // explicit for callers wiring raw rail clicks).
+      if (!canEnterMode(target, deck !== null)) return
+      const windowMode = windowModeFor(target)
+      set({ workspace: target, mode: windowMode })
+      // Only touch the presenter window when the window layout actually changes.
+      void window.cuedeck.window.setPresenter(windowMode === 'present')
+    },
+
+    exitPresent: () => {
+      if (get().workspace !== 'present') return
+      set({ workspace: modeAfterExitPresent(), mode: 'edit' })
+      // Restore the pre-presenter bounds + always-on-top state.
+      void window.cuedeck.window.setPresenter(false)
+    },
 
     addCard: () => {
       const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }

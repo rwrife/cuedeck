@@ -1,80 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
-import type { Snippet } from '@shared/types'
 import { positionLabel } from '@shared/presenter'
-import { renderSnippet } from '@shared/variables'
 import { MarkdownNotes } from './MarkdownNotes'
-
-/**
- * A single large, read-only copy button used in Presenter Mode.
- *
- * Deliberately minimal: a big number badge, the snippet label, and a big Copy
- * action with a "Copied ✓" flash. The badge doubles as a native drag-out
- * handle (drop onto any text field to paste), mirroring the editor's snippet
- * drag affordance. No editing, expanding, or deleting here — this is the demo
- * surface, not the authoring surface.
- */
-function PresenterSnippet({
-  cardId,
-  snippet,
-  index
-}: {
-  cardId: string
-  snippet: Snippet
-  index: number
-}): JSX.Element {
-  const copySnippet = useDeckStore((s) => s.copySnippet)
-  const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
-  // Deck variables for drag-out substitution (copy path substitutes in-store).
-  const variables = useDeckStore((s) => s.deck?.variables)
-
-  // Only 1–9 get a keyboard-visible number badge (matching the copy hotkeys).
-  const hotkeyNumber = index < 9 ? index + 1 : null
-
-  function onDragStartOut(e: React.DragEvent): void {
-    e.dataTransfer.setData('text/plain', renderSnippet(snippet.content, variables))
-    e.dataTransfer.effectAllowed = 'copy'
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => void copySnippet(cardId, snippet.id)}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
-        copied
-          ? 'border-green-500 bg-green-600 text-white'
-          : 'border-deck-border bg-deck-card text-deck-text hover:border-deck-accent hover:bg-deck-panel'
-      }`}
-      title={`Copy “${snippet.label || 'snippet'}” to the clipboard`}
-    >
-      <span
-        draggable
-        onDragStart={onDragStartOut}
-        onClick={(e) => e.stopPropagation()}
-        className={`flex h-9 w-9 shrink-0 cursor-grab select-none items-center justify-center rounded-lg text-base font-bold active:cursor-grabbing ${
-          copied ? 'bg-white/25 text-white' : 'bg-deck-accent text-white'
-        }`}
-        title="Drag me into your demo app"
-        aria-hidden={hotkeyNumber === null}
-      >
-        {hotkeyNumber ?? '↗'}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-base font-semibold">
-          {snippet.label || 'Untitled snippet'}
-        </span>
-        {snippet.content && (
-          <span className="mt-0.5 block truncate font-mono text-xs opacity-70">
-            {snippet.content.split('\n')[0]}
-          </span>
-        )}
-      </span>
-      <span className="shrink-0 text-sm font-semibold uppercase tracking-wide opacity-90">
-        {copied ? 'Copied ✓' : 'Copy'}
-      </span>
-    </button>
-  )
-}
+import { ReadOnlySnippet } from './ReadOnlySnippet'
 
 /**
  * Presenter Mode (#5): a compact, distraction-free, read-only view for running
@@ -94,7 +22,7 @@ export function PresenterView(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const activeCardId = useDeckStore((s) => s.activeCardId)
   const stepActiveCard = useDeckStore((s) => s.stepActiveCard)
-  const setMode = useDeckStore((s) => s.setMode)
+  const exitPresent = useDeckStore((s) => s.exitPresent)
 
   const index = deck.cards.findIndex((c) => c.id === activeCardId)
   const card = index >= 0 ? deck.cards[index] : undefined
@@ -115,9 +43,9 @@ export function PresenterView(): JSX.Element {
       {/* Compact top bar: exit + position + on-top indicator */}
       <header className="flex items-center justify-between gap-2 border-b border-deck-border bg-deck-panel px-3 py-2">
         <button
-          onClick={() => setMode('edit')}
+          onClick={exitPresent}
           className="rounded px-2 py-1 text-sm font-medium text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-          title="Exit Presenter Mode (F5 or Ctrl/Cmd+P)"
+          title="Exit Presenter Mode to Rehearse (F5 or Ctrl/Cmd+P)"
         >
           ✕ Exit
         </button>
@@ -153,7 +81,7 @@ export function PresenterView(): JSX.Element {
           {card.snippets.length > 0 && (
             <div className="flex flex-col gap-2">
               {card.snippets.map((snippet, i) => (
-                <PresenterSnippet key={snippet.id} cardId={card.id} snippet={snippet} index={i} />
+                <ReadOnlySnippet key={snippet.id} cardId={card.id} snippet={snippet} index={i} />
               ))}
             </div>
           )}
