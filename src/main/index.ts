@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, clipboard, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard, shell, nativeTheme, Menu } from 'electron'
 import { join } from 'path'
 import { IPC } from '../shared/ipc'
 import { PRESENTER_WINDOW_SIZE } from '../shared/presenter'
@@ -6,8 +6,16 @@ import { resolveTheme } from '../shared/settings'
 import { registerDeckHandlers } from './deckStore'
 import { getSettingsSync, initSettings, registerSettingsHandlers } from './settingsStore'
 import { registerLiveControlHandlers } from './liveControlStore'
+import { buildApplicationMenuTemplate, resolveWindowBackgroundColor } from './windowChrome'
 
 const isDev = !app.isPackaged
+
+// Only meaningful in dev: packaged builds get their window/taskbar/dock icon
+// baked in by electron-builder (see `build.*.icon` in package.json) from this
+// same source file, so setting it again at runtime would be redundant there.
+// In dev the app runs as plain `electron.exe`/Electron.app, which otherwise
+// shows the generic Electron icon.
+const devIconPath = join(__dirname, '../../build/icon.png')
 
 let mainWindow: BrowserWindow | null = null
 
@@ -21,7 +29,7 @@ function createWindow(): void {
   // Match the initial window background to the saved theme so there's no
   // light-on-dark (or dark-on-light) flash before the renderer paints.
   const applied = resolveTheme(getSettingsSync().theme, nativeTheme.shouldUseDarkColors)
-  const backgroundColor = applied === 'light' ? '#f5f6f8' : '#0f1117'
+  const backgroundColor = resolveWindowBackgroundColor(applied)
 
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -31,6 +39,7 @@ function createWindow(): void {
     show: false,
     backgroundColor,
     title: 'CueDeck',
+    ...(isDev ? { icon: devIconPath } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: false,
@@ -116,6 +125,20 @@ function registerCoreHandlers(): void {
 }
 
 app.whenReady().then(async () => {
+  // CueDeck has no File/View/Help commands of its own, so the generic
+  // Electron default menu is irrelevant chrome on Windows/Linux — remove it.
+  // macOS keeps a minimal, conventional App/Edit/Window menu since some of
+  // those roles (e.g. Edit's Cut/Copy/Paste/Select All) back native text-field
+  // keyboard behavior there. See `windowChrome.ts` for the pure template.
+  const menuTemplate = buildApplicationMenuTemplate(process.platform)
+  Menu.setApplicationMenu(menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null)
+
+  // Dev-only Dock icon; see `devIconPath` above for why packaged builds don't
+  // need this.
+  if (isDev && process.platform === 'darwin') {
+    app.dock?.setIcon(devIconPath)
+  }
+
   // Warm the settings cache before the window is created so the initial
   // background color + always-on-top default reflect saved preferences.
   await initSettings()
