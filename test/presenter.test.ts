@@ -4,6 +4,7 @@ import {
   isPresenterToggleKey,
   isPresenting,
   positionLabel,
+  presenterShortcuts,
   toggleMode
 } from '../src/shared/presenter'
 
@@ -76,5 +77,50 @@ describe('presenter: toggle hotkey', () => {
     for (const key of ['F4', 'F6', 'Enter', 'ArrowLeft', 'a', '1', '']) {
       expect(isPresenterToggleKey({ key })).toBe(false)
     }
+  })
+})
+
+describe('presenter: contextual shortcut hints', () => {
+  it('always offers Exit', () => {
+    const hints = presenterShortcuts({ snippetCount: 0, canGoPrev: false, canGoNext: false })
+    expect(hints).toEqual([{ keys: 'F5', label: 'Exit' }])
+  })
+
+  it('shows a single copy key for one snippet', () => {
+    const hints = presenterShortcuts({ snippetCount: 1, canGoPrev: false, canGoNext: false })
+    expect(hints[0]).toEqual({ keys: '1', label: 'Copy snippet' })
+  })
+
+  it('shows a copy range for multiple snippets, capped at 9', () => {
+    expect(
+      presenterShortcuts({ snippetCount: 4, canGoPrev: false, canGoNext: false })[0]
+    ).toEqual({ keys: '1–4', label: 'Copy snippet' })
+    // Only 1–9 have hotkeys, so a bigger deck still caps at 9.
+    expect(
+      presenterShortcuts({ snippetCount: 25, canGoPrev: false, canGoNext: false })[0]
+    ).toEqual({ keys: '1–9', label: 'Copy snippet' })
+  })
+
+  it('only advertises navigation that is actually possible', () => {
+    const keysOf = (opts: Parameters<typeof presenterShortcuts>[0]): string[] =>
+      presenterShortcuts(opts).map((h) => h.keys)
+
+    expect(keysOf({ snippetCount: 0, canGoPrev: true, canGoNext: true })).toEqual([
+      '←',
+      '→',
+      'F5'
+    ])
+    expect(keysOf({ snippetCount: 0, canGoPrev: false, canGoNext: true })).toEqual(['→', 'F5'])
+    expect(keysOf({ snippetCount: 0, canGoPrev: true, canGoNext: false })).toEqual(['←', 'F5'])
+  })
+
+  it('composes copy + navigation + exit in order for a rich step', () => {
+    const hints = presenterShortcuts({ snippetCount: 3, canGoPrev: true, canGoNext: true })
+    expect(hints).toEqual([
+      { keys: '1–3', label: 'Copy snippet' },
+      { keys: '←', label: 'Previous' },
+      { keys: '→', label: 'Next' },
+      { keys: 'F5', label: 'Exit' }
+    ])
   })
 })

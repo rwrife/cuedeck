@@ -1,6 +1,7 @@
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { renderSnippet } from '@shared/variables'
+import { Icon } from '../ui'
 
 /**
  * A single large, read-only copy button used by the Rehearse and Present
@@ -38,7 +39,7 @@ export function ReadOnlySnippet({
       onClick={() => void copySnippet(cardId, snippet.id)}
       className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
         copied
-          ? 'border-green-500 bg-green-600 text-white'
+          ? 'border-deck-status-success bg-deck-statusSurface-success text-deck-status-success'
           : 'border-deck-border bg-deck-card text-deck-text hover:border-deck-accent hover:bg-deck-panel'
       }`}
       title={`Copy “${snippet.label || 'snippet'}” to the clipboard`}
@@ -48,7 +49,7 @@ export function ReadOnlySnippet({
         onDragStart={onDragStartOut}
         onClick={(e) => e.stopPropagation()}
         className={`flex h-9 w-9 shrink-0 cursor-grab select-none items-center justify-center rounded-lg text-base font-bold active:cursor-grabbing ${
-          copied ? 'bg-white/25 text-white' : 'bg-deck-accent text-white'
+          copied ? 'bg-deck-status-success text-white' : 'bg-deck-accent text-white'
         }`}
         title="Drag me into your demo app"
         aria-hidden={hotkeyNumber === null}
@@ -65,8 +66,15 @@ export function ReadOnlySnippet({
           </span>
         )}
       </span>
-      <span className="shrink-0 text-sm font-semibold uppercase tracking-wide opacity-90">
-        {copied ? 'Copied ✓' : 'Copy'}
+      <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold uppercase tracking-wide opacity-90">
+        {copied ? (
+          <>
+            <Icon name="check" size={16} label="Copied" />
+            Copied
+          </>
+        ) : (
+          'Copy'
+        )}
       </span>
     </button>
   )
