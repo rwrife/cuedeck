@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { TextField } from './ui/TextField'
+import { EmptyState } from './ui/EmptyState'
+import { StatusBanner } from './ui/StatusBanner'
+import { ClapperboardIcon, SettingsIcon, TrashIcon } from './ui/icons'
 
 /**
  * Landing screen: pick an existing deck or create a new one.
@@ -26,52 +32,40 @@ export function DeckPicker(): JSX.Element {
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col gap-6 p-10">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">🎬 CueDeck</h1>
+        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+          <ClapperboardIcon />
+          CueDeck
+        </h1>
         <p className="mt-1 text-deck-muted">Your demo cue cards + instant clipboard snippets.</p>
       </header>
 
       <div className="flex gap-2">
-        <input
+        <TextField
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
           placeholder="New deck name…"
-          className="flex-1 rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 outline-none placeholder:text-deck-muted focus:border-deck-accent"
+          aria-label="New deck name"
+          className="flex-1 px-4 py-2.5"
         />
-        <button
-          onClick={handleCreate}
-          className="rounded-lg bg-deck-accent px-5 py-2.5 font-medium text-white transition hover:bg-deck-accentHover"
-        >
+        <Button variant="primary" onClick={handleCreate}>
           Create
-        </button>
-        <button
-          onClick={importDeck}
-          className="rounded-lg border border-deck-border bg-deck-panel px-5 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
-          title="Import a deck from a .json file"
-        >
+        </Button>
+        <Button variant="secondary" onClick={importDeck} title="Import a deck from a .json file">
           Import…
-        </button>
-        <button
+        </Button>
+        <IconButton
+          label="Open settings"
+          icon={<SettingsIcon />}
+          variant="secondary"
           onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
-          className="rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
-          title="Settings — theme, font size, and preferences"
-          aria-label="Open settings"
-        >
-          ⚙
-        </button>
+        />
       </div>
 
       {statusMessage && (
-        <div className="flex items-start justify-between gap-3 rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 text-sm">
-          <span className="min-w-0 break-words text-deck-text">{statusMessage}</span>
-          <button
-            onClick={() => setStatusMessage(null)}
-            className="shrink-0 rounded px-1.5 text-deck-muted transition hover:text-deck-text"
-            title="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
+        <StatusBanner tone="neutral" onDismiss={() => setStatusMessage(null)}>
+          {statusMessage}
+        </StatusBanner>
       )}
 
       <div className="flex-1 overflow-auto">
@@ -79,15 +73,16 @@ export function DeckPicker(): JSX.Element {
           Your Decks
         </h2>
         {summaries.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-deck-border p-8 text-center text-deck-muted">
-            No decks yet. Create your first one above.
-          </p>
+          <EmptyState
+            title="No decks yet"
+            description="Create your first deck above — decks hold your demo cards and paste-ready snippets."
+          />
         ) : (
           <ul className="flex flex-col gap-2">
             {summaries.map((s) => (
               <li
                 key={s.id}
-                className="group flex items-center justify-between rounded-lg border border-deck-border bg-deck-panel px-4 py-3 transition hover:border-deck-accent"
+                className="group flex items-center justify-between rounded-lg border border-deck-border bg-deck-panel px-4 py-3 transition-colors motion-reduce:transition-none hover:border-deck-accent"
               >
                 <button className="flex-1 text-left" onClick={() => openDeck(s.id)}>
                   <div className="font-medium">{s.name}</div>
@@ -96,20 +91,22 @@ export function DeckPicker(): JSX.Element {
                     {new Date(s.updatedAt).toLocaleString()}
                   </div>
                 </button>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => exportDeck(s.id)}
-                  className="ml-3 rounded px-2 py-1 text-xs text-deck-muted opacity-0 transition hover:text-deck-accent group-hover:opacity-100"
+                  className="ml-3 opacity-0 group-hover:opacity-100"
                   title="Export deck to a .json file"
                 >
                   Export
-                </button>
-                <button
+                </Button>
+                <IconButton
+                  label={`Delete deck ${s.name}`}
+                  icon={<TrashIcon />}
+                  size="sm"
                   onClick={() => deleteDeck(s.id)}
-                  className="ml-1 rounded px-2 py-1 text-xs text-deck-muted opacity-0 transition hover:text-red-400 group-hover:opacity-100"
-                  title="Delete deck"
-                >
-                  Delete
-                </button>
+                  className="ml-1 opacity-0 hover:!text-deck-danger group-hover:opacity-100"
+                />
               </li>
             ))}
           </ul>
@@ -118,3 +115,4 @@ export function DeckPicker(): JSX.Element {
     </div>
   )
 }
+

@@ -8,6 +8,10 @@ import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 import { OPEN_LIVE_CONTROL_EVENT } from './LiveControlPanel'
 import { PresenterView } from './PresenterView'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { KeyboardHint } from './ui/KeyboardHint'
+import { PinIcon, PlayIcon, SearchIcon, SettingsIcon, SlidersIcon } from './ui/icons'
 
 /**
  * Main two-pane workspace shown when a deck is open:
@@ -80,71 +84,68 @@ export function DeckWorkspace(): JSX.Element {
       {/* Top bar */}
       <header className="flex items-center justify-between border-b border-deck-border bg-deck-panel px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <button
-            onClick={closeDeck}
-            className="rounded px-2 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-            title="Back to decks"
-          >
+          <Button variant="ghost" size="sm" onClick={closeDeck} title="Back to decks">
             ← Decks
-          </button>
+          </Button>
           <h1 className="font-semibold">{deck.name}</h1>
           <span className="text-xs text-deck-muted">{saving ? 'Saving…' : 'Saved'}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<SearchIcon />}
             onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
-            className="flex items-center gap-2 rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
             title="Search cards and snippets (/ or Ctrl/Cmd+K)"
           >
-            🔍 Search
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">/</kbd>
-          </button>
-          <button
+            Search
+            <KeyboardHint keys={['/']} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<PlayIcon />}
             onClick={toggleMode}
-            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
             title="Start Presenter Mode — compact, always-on-top demo view (F5 or Ctrl/Cmd+P)"
           >
-            ▶︎ Present
-            <kbd className="ml-2 rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">F5</kbd>
-          </button>
-          <button
+            Present
+            <KeyboardHint keys={['F5']} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => exportDeck(deck.id)}
-            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
             title="Export this deck to a .json file"
           >
             Export
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<SlidersIcon />}
+            active={liveActive}
+            activeTone="success"
             onClick={() => window.dispatchEvent(new Event(OPEN_LIVE_CONTROL_EVENT))}
-            className={`flex items-center gap-2 rounded px-3 py-1 text-sm transition ${
-              liveActive
-                ? 'bg-green-600 text-white'
-                : 'text-deck-muted hover:bg-deck-card hover:text-deck-text'
-            }`}
             title="Live Control — let an MCP client drive this demo (opt-in, loopback-only)"
           >
-            🎛 Live
-            {liveActive && <span className="h-2 w-2 rounded-full bg-white" aria-hidden />}
-          </button>
-          <button
+            Live
+          </Button>
+          <IconButton
+            label="Open settings"
+            icon={<SettingsIcon />}
+            size="sm"
             onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
-            className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-            title="Settings — theme, font size, and preferences"
-            aria-label="Open settings"
-          >
-            ⚙
-          </button>
-          <button
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<PinIcon />}
+            active={pinned}
             onClick={togglePin}
-            className={`rounded px-3 py-1 text-sm transition ${
-              pinned
-                ? 'bg-deck-accent text-white'
-                : 'text-deck-muted hover:bg-deck-card hover:text-deck-text'
-            }`}
             title="Keep window on top during your demo"
           >
-            📌 {pinned ? 'Pinned' : 'Pin on top'}
-          </button>
+            {pinned ? 'Pinned' : 'Pin on top'}
+          </Button>
         </div>
       </header>
 
@@ -159,17 +160,16 @@ export function DeckWorkspace(): JSX.Element {
           </div>
           {/* Keyboard-hint legend */}
           <footer className="flex items-center justify-center gap-2 border-t border-deck-border bg-deck-panel px-4 py-1.5 text-xs text-deck-muted">
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">1–9</kbd>
+            <KeyboardHint keys={['1–9']} />
             <span>copy</span>
             <span className="text-deck-border">·</span>
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">←</kbd>
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">→</kbd>
+            <KeyboardHint keys={['←', '→']} />
             <span>cards</span>
             <span className="text-deck-border">·</span>
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">/</kbd>
+            <KeyboardHint keys={['/']} />
             <span>search</span>
             <span className="text-deck-border">·</span>
-            <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">F5</kbd>
+            <KeyboardHint keys={['F5']} />
             <span>present</span>
           </footer>
         </main>

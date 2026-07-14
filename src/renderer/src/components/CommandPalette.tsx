@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { isTypingTarget } from '@shared/hotkeys'
 import { kindLabel, searchDeck, type SearchResult } from '@shared/search'
+import { SearchIcon } from './ui/icons'
 
 /**
  * Custom DOM event other components can dispatch to open the palette (e.g. a
@@ -156,7 +157,7 @@ export function CommandPalette(): JSX.Element | null {
         {/* Search field */}
         <div className="flex items-center gap-2 border-b border-deck-border px-3 py-2.5">
           <span className="text-deck-muted" aria-hidden="true">
-            🔍
+            <SearchIcon />
           </span>
           <input
             ref={inputRef}

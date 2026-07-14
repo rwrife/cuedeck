@@ -18,8 +18,20 @@ export default {
           border: 'var(--deck-border)',
           accent: 'var(--deck-accent)',
           accentHover: 'var(--deck-accent-hover)',
+          // Pressed/active fill (#32) — e.g. `active:` button states and
+          // toggled-on indicators.
+          accentPressed: 'var(--deck-accent-pressed)',
           text: 'var(--deck-text)',
-          muted: 'var(--deck-muted)'
+          muted: 'var(--deck-muted)',
+          // Semantic status tones (#32), shared by Button, StatusBanner, and
+          // any success/warning/danger feedback across the app.
+          success: 'var(--deck-success)',
+          successHover: 'var(--deck-success-hover)',
+          warning: 'var(--deck-warning)',
+          warningHover: 'var(--deck-warning-hover)',
+          danger: 'var(--deck-danger)',
+          dangerHover: 'var(--deck-danger-hover)',
+          focusRing: 'var(--deck-focus-ring)'
         }
       },
       fontSize: {

@@ -4,12 +4,15 @@ import type { Snippet } from '@shared/types'
 import { positionLabel } from '@shared/presenter'
 import { renderSnippet } from '@shared/variables'
 import { MarkdownNotes } from './MarkdownNotes'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, CheckIcon, CloseIcon, PinIcon } from './ui/icons'
 
 /**
  * A single large, read-only copy button used in Presenter Mode.
  *
  * Deliberately minimal: a big number badge, the snippet label, and a big Copy
- * action with a "Copied ✓" flash. The badge doubles as a native drag-out
+ * action with a "Copied" flash. The badge doubles as a native drag-out
  * handle (drop onto any text field to paste), mirroring the editor's snippet
  * drag affordance. No editing, expanding, or deleting here — this is the demo
  * surface, not the authoring surface.
@@ -40,9 +43,9 @@ function PresenterSnippet({
     <button
       type="button"
       onClick={() => void copySnippet(cardId, snippet.id)}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors motion-reduce:transition-none ${
         copied
-          ? 'border-green-500 bg-green-600 text-white'
+          ? 'border-deck-success bg-deck-success text-white'
           : 'border-deck-border bg-deck-card text-deck-text hover:border-deck-accent hover:bg-deck-panel'
       }`}
       title={`Copy “${snippet.label || 'snippet'}” to the clipboard`}
@@ -57,7 +60,7 @@ function PresenterSnippet({
         title="Drag me into your demo app"
         aria-hidden={hotkeyNumber === null}
       >
-        {hotkeyNumber ?? '↗'}
+        {hotkeyNumber ?? <ArrowUpRightIcon />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-base font-semibold">
@@ -69,8 +72,14 @@ function PresenterSnippet({
           </span>
         )}
       </span>
-      <span className="shrink-0 text-sm font-semibold uppercase tracking-wide opacity-90">
-        {copied ? 'Copied ✓' : 'Copy'}
+      <span className="flex shrink-0 items-center gap-1 text-sm font-semibold uppercase tracking-wide opacity-90">
+        {copied ? (
+          <>
+            <CheckIcon /> Copied
+          </>
+        ) : (
+          'Copy'
+        )}
       </span>
     </button>
   )
@@ -114,17 +123,19 @@ export function PresenterView(): JSX.Element {
     <div className="flex h-full flex-col bg-deck-bg text-deck-text">
       {/* Compact top bar: exit + position + on-top indicator */}
       <header className="flex items-center justify-between gap-2 border-b border-deck-border bg-deck-panel px-3 py-2">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<CloseIcon />}
           onClick={() => setMode('edit')}
-          className="rounded px-2 py-1 text-sm font-medium text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
           title="Exit Presenter Mode (F5 or Ctrl/Cmd+P)"
         >
-          ✕ Exit
-        </button>
+          Exit
+        </Button>
         <span className="flex items-center gap-2 text-xs text-deck-muted">
           {pinned && (
             <span title="Window is pinned on top" aria-label="Pinned on top">
-              📌
+              <PinIcon />
             </span>
           )}
           <span className="font-mono text-sm tabular-nums text-deck-text">
@@ -166,24 +177,22 @@ export function PresenterView(): JSX.Element {
 
       {/* Prev / next controls */}
       <footer className="flex items-center gap-2 border-t border-deck-border bg-deck-panel px-3 py-2.5">
-        <button
+        <IconButton
+          label="Previous card"
+          icon={<ArrowLeftIcon />}
           onClick={() => stepActiveCard(-1)}
           disabled={atStart}
-          className="flex-1 rounded-lg border border-deck-border bg-deck-card py-2 text-lg font-semibold transition enabled:hover:border-deck-accent enabled:hover:bg-deck-panel disabled:cursor-not-allowed disabled:opacity-40"
           title="Previous card (←)"
-          aria-label="Previous card"
-        >
-          ←
-        </button>
-        <button
+          className="h-auto flex-1 !w-auto rounded-lg border border-deck-border bg-deck-card py-2"
+        />
+        <IconButton
+          label="Next card"
+          icon={<ArrowRightIcon />}
           onClick={() => stepActiveCard(1)}
           disabled={atEnd}
-          className="flex-1 rounded-lg border border-deck-border bg-deck-card py-2 text-lg font-semibold transition enabled:hover:border-deck-accent enabled:hover:bg-deck-panel disabled:cursor-not-allowed disabled:opacity-40"
           title="Next card (→)"
-          aria-label="Next card"
-        >
-          →
-        </button>
+          className="h-auto flex-1 !w-auto rounded-lg border border-deck-border bg-deck-card py-2"
+        />
       </footer>
     </div>
   )

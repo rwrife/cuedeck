@@ -3,6 +3,17 @@ import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  GripIcon,
+  WarningIcon
+} from './ui/icons'
 
 interface Props {
   cardId: string
@@ -100,15 +111,15 @@ export function SnippetButton({
           title="Drag to reorder"
           aria-hidden="true"
         >
-          ⠿
+          <GripIcon />
         </span>
         <span
           draggable
           onDragStart={onDragStartOut}
-          className="cursor-grab select-none rounded bg-deck-panel px-2 py-1 text-xs text-deck-muted active:cursor-grabbing"
+          className="flex cursor-grab select-none items-center gap-1 rounded bg-deck-panel px-2 py-1 text-xs text-deck-muted active:cursor-grabbing"
           title="Drag me into your demo app"
         >
-          {index + 1} ↗
+          {index + 1} <ArrowUpRightIcon />
         </span>
         <input
           value={snippet.label}
@@ -116,30 +127,29 @@ export function SnippetButton({
           placeholder="Label…"
           className="flex-1 bg-transparent text-sm font-medium outline-none"
         />
-        <button
+        <Button
+          variant="primary"
+          size="sm"
+          active={copied}
+          activeTone="success"
           onClick={copy}
-          className={`rounded px-3 py-1 text-sm font-medium transition ${
-            copied
-              ? 'bg-green-600 text-white'
-              : 'bg-deck-accent text-white hover:bg-deck-accentHover'
-          }`}
+          icon={copied ? <CheckIcon /> : undefined}
         >
-          {copied ? 'Copied ✓' : 'Copy'}
-        </button>
-        <button
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+        <IconButton
+          label={expanded ? 'Collapse content' : 'Edit content'}
+          icon={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          size="sm"
           onClick={() => setExpanded((v) => !v)}
-          className="rounded px-2 py-1 text-sm text-deck-muted transition hover:text-deck-text"
-          title={expanded ? 'Collapse' : 'Edit content'}
-        >
-          {expanded ? '▾' : '▸'}
-        </button>
-        <button
+        />
+        <IconButton
+          label="Delete snippet"
+          icon={<CloseIcon />}
+          size="sm"
           onClick={() => removeSnippet(cardId, snippet.id)}
-          className="rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
-          title="Delete snippet"
-        >
-          ✕
-        </button>
+          className="hover:!text-deck-danger"
+        />
       </div>
 
       {/* Referenced-variable chips (#7): shows which `{{variables}}` this snippet
@@ -152,9 +162,9 @@ export function SnippetButton({
             return (
               <span
                 key={name}
-                className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] ${
                   isMissing
-                    ? 'bg-amber-500/15 text-amber-500'
+                    ? 'bg-deck-warning/15 text-deck-warning'
                     : 'bg-deck-panel text-deck-muted'
                 }`}
                 title={
@@ -164,7 +174,7 @@ export function SnippetButton({
                 }
               >
                 {name}
-                {isMissing && ' ⚠'}
+                {isMissing && <WarningIcon />}
               </span>
             )
           })}

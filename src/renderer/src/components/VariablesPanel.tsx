@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { collectReferencedVariables } from '@shared/variables'
+import { IconButton } from './ui/IconButton'
+import { ChevronDownIcon, ChevronRightIcon, CloseIcon } from './ui/icons'
 
 /**
  * One editable variable row: key input, value input, delete. The key is only
@@ -62,26 +64,24 @@ function VariableRow({
         spellCheck={false}
         aria-label={`Value for ${name}`}
         className={`flex-1 rounded border bg-deck-panel px-2 py-1 font-mono text-xs outline-none focus:border-deck-accent ${
-          empty ? 'border-amber-500/60' : 'border-deck-border'
+          empty ? 'border-deck-warning/60' : 'border-deck-border'
         }`}
       />
       {empty && (
         <span
-          className="shrink-0 text-xs text-amber-500"
+          className="shrink-0 text-xs text-deck-warning"
           title="This variable has no value; snippets that use it will show a placeholder marker when copied."
         >
           unset
         </span>
       )}
-      <button
-        type="button"
+      <IconButton
+        label={`Delete variable ${name}`}
+        icon={<CloseIcon />}
+        size="sm"
         onClick={() => removeVariable(name)}
-        className="shrink-0 rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
-        title={`Delete variable ${name}`}
-        aria-label={`Delete variable ${name}`}
-      >
-        ✕
-      </button>
+        className="shrink-0 hover:!text-deck-danger"
+      />
     </div>
   )
 }
@@ -148,7 +148,9 @@ export function VariablesPanel(): JSX.Element {
           className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-deck-muted transition hover:text-deck-text"
           aria-expanded={open}
         >
-          <span className="inline-block w-3 text-center">{open ? '▾' : '▸'}</span>
+          <span className="inline-block w-3 text-center">
+            {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          </span>
           Variables
           <span className="rounded bg-deck-card px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-deck-muted">
             {count}
@@ -158,7 +160,7 @@ export function VariablesPanel(): JSX.Element {
           <button
             type="button"
             onClick={addReferenced}
-            className="rounded bg-deck-card px-2 py-0.5 text-xs text-amber-500 transition hover:bg-deck-accent hover:text-white"
+            className="rounded bg-deck-card px-2 py-0.5 text-xs text-deck-warning transition hover:bg-deck-accent hover:text-white"
             title={`Define the ${undefinedRefs.length} variable(s) referenced by snippets but not yet set: ${undefinedRefs.join(', ')}`}
           >
             + Add {undefinedRefs.length} referenced

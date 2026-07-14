@@ -3,14 +3,20 @@
 @tailwind utilities;
 
 /*
- * Theme tokens (#8). The `deck-*` Tailwind colors resolve to these CSS custom
- * properties (see tailwind.config.js), so switching the `data-theme` attribute
- * on <html> re-themes every existing `bg-deck-*` / `text-deck-*` utility with no
- * markup changes. The light theme uses hand-picked, legible values rather than
- * inverted dark colors.
+ * Theme tokens (#8, extended by #32). The `deck-*` Tailwind colors resolve to
+ * these CSS custom properties (see tailwind.config.js), so switching the
+ * `data-theme` attribute on <html> re-themes every existing `bg-deck-*` /
+ * `text-deck-*` utility with no markup changes. The light theme uses
+ * hand-picked, legible values rather than inverted dark colors.
  *
  * `--deck-font-scale` is the presenter/notes font multiplier driven by the
  * font-size preference; it defaults to 1 (no scaling).
+ *
+ * The design-system foundation (#32) adds semantic success/warning/danger
+ * tones, a pressed-state accent fill, and a shared focus-ring color so the
+ * shared renderer primitives (Button, Dialog, StatusBanner, …) never
+ * hand-roll one-off colors. Spacing and radii reuse Tailwind's existing scale
+ * consistently across primitives rather than introducing parallel tokens.
  */
 :root,
 [data-theme='dark'] {
@@ -22,8 +28,21 @@
   --deck-border: #2a2f3d;
   --deck-accent: #6366f1;
   --deck-accent-hover: #818cf8;
+  --deck-accent-pressed: #4f46e5;
   --deck-text: #e5e7eb;
   --deck-muted: #9ca3af;
+
+  /* Semantic status tones (#32): consistent success/warning/danger across
+     save status, rehearsal warnings, destructive actions, and copy feedback. */
+  --deck-success: #22c55e;
+  --deck-success-hover: #16a34a;
+  --deck-warning: #f59e0b;
+  --deck-warning-hover: #d97706;
+  --deck-danger: #ef4444;
+  --deck-danger-hover: #dc2626;
+
+  /* Focus ring used by every interactive primitive's `focus-visible` state. */
+  --deck-focus-ring: var(--deck-accent);
 
   --deck-scrollbar-thumb: #2a2f3d;
   --deck-scrollbar-thumb-hover: #3a4152;
@@ -44,13 +63,42 @@
   --deck-border: #d7dbe3;
   --deck-accent: #4f46e5;
   --deck-accent-hover: #4338ca;
+  --deck-accent-pressed: #3730a3;
   --deck-text: #1f2430;
   --deck-muted: #5c6470;
+
+  /* Semantic status tones, tuned a shade darker to stay legible on white. */
+  --deck-success: #16a34a;
+  --deck-success-hover: #15803d;
+  --deck-warning: #b45309;
+  --deck-warning-hover: #92400e;
+  --deck-danger: #dc2626;
+  --deck-danger-hover: #b91c1c;
+
+  --deck-focus-ring: var(--deck-accent);
 
   --deck-scrollbar-thumb: #cdd2db;
   --deck-scrollbar-thumb-hover: #b4bbc7;
   --deck-code-bg: #eef0f4;
   --deck-code-border: #d7dbe3;
+}
+
+/*
+ * Reduced motion (#32): disable non-essential transitions/animations for
+ * users who prefer reduced motion, matching the `motion-reduce:` Tailwind
+ * variant used inline on the shared primitives (belt-and-suspenders — this
+ * global rule also covers any plain CSS transition that isn't opted out
+ * per-utility).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 html,
