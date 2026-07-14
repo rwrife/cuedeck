@@ -34,13 +34,24 @@ let prePresenterState: { bounds: Electron.Rectangle; alwaysOnTop: boolean } | nu
  */
 const closeGuard = new CloseGuard()
 
+/**
+ * Set once the app is genuinely quitting (Cmd+Q / `app.quit()`), via the
+ * `before-quit` event. It tells the window `close` handler that the deferred
+ * flush must resume the *quit*, not just re-close the window — otherwise on
+ * macOS the flushed close would cancel the quit and leave the app in the dock.
+ */
+let appIsQuitting = false
+
 /** How long to wait for the renderer's flush ack before closing anyway (ms). */
 const FLUSH_TIMEOUT_MS = 4000
 
 /**
- * Ask the renderer to flush pending edits, then close the window once it acks
- * or the safety timeout elapses. Idempotent per close attempt via the pure
- * {@link CloseGuard} so duplicate close events and late acks are harmless.
+ * Ask the renderer to flush pending edits, then resume shutdown once it acks or
+ * the safety timeout elapses. The resume action comes from the pure
+ * {@link CloseGuard}: `'quit'` re-issues the app quit (so macOS actually exits),
+ * `'close'` re-issues the window close, and `'none'` ignores a late/spurious
+ * signal. Idempotent per close attempt so duplicate close events and late acks
+ * are harmless.
  */
 function flushThenClose(win: BrowserWindow): void {
   let settled = false
@@ -50,7 +61,11 @@ function flushThenClose(win: BrowserWindow): void {
     clearTimeout(timer)
     ipcMain.removeListener(IPC.appFlushComplete, onAck)
     const res = fromTimeout ? closeGuard.onFlushTimeout() : closeGuard.onFlushComplete()
-    if (res.shouldClose && !win.isDestroyed()) win.close()
+    if (res.resume === 'quit') {
+      app.quit()
+    } else if (res.resume === 'close' && !win.isDestroyed()) {
+      win.close()
+    }
   }
   const onAck = (evt: Electron.IpcMainEvent): void => {
     if (evt.sender === win.webContents) finish(false)
@@ -64,6 +79,7 @@ function createWindow(): void {
   // A fresh window starts a fresh shutdown handshake (e.g. macOS re-activate
   // after all windows were closed) so the next close still flushes first.
   closeGuard.reset()
+  appIsQuitting = false
 
   // Match the initial window background to the saved theme so there's no
   // light-on-dark (or dark-on-light) flash before the renderer paints.
@@ -92,11 +108,13 @@ function createWindow(): void {
   })
 
   // Safe shutdown (#38): defer the first close until the renderer has flushed
-  // any pending debounced edits, so the last change is never silently lost.
+  // any pending debounced edits, so the last change is never silently lost. The
+  // `appIsQuitting` flag (set by `before-quit`) makes a Cmd+Q/app.quit resume as
+  // a real quit rather than only re-closing the window.
   mainWindow.on('close', (event) => {
     const win = mainWindow
     if (!win) return
-    const decision = closeGuard.requestClose()
+    const decision = closeGuard.requestClose(appIsQuitting)
     if (decision.proceed) return
     event.preventDefault()
     if (decision.shouldFlush) flushThenClose(win)
@@ -208,4 +226,13 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+// Record app-quit intent (Cmd+Q / app.quit()) so the window `close` handler
+// resumes the actual quit after flushing instead of only re-closing the window.
+// This handler intentionally does no flushing or preventDefault — it just sets a
+// flag; the close handshake owns the deferral. Re-firing on the resumed quit is
+// harmless (the flag is already set).
+app.on('before-quit', () => {
+  appIsQuitting = true
 })
