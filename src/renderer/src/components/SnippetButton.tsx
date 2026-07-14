@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
+import { BUILD_LANGUAGE, contentLabelFieldId } from '@shared/buildLanguage'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
 
 interface Props {
@@ -50,7 +51,20 @@ export function SnippetButton({
   // Flash "Copied ✓" whenever this snippet is the last-copied one — whether the
   // copy came from this button or from a number-key hotkey.
   const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
+  const focusRequest = useDeckStore((s) => s.focusRequest)
+  const clearFocusRequest = useDeckStore((s) => s.clearFocusRequest)
   const [expanded, setExpanded] = useState(false)
+  const labelRef = useRef<HTMLInputElement | null>(null)
+
+  // Autofocus a newly added block's label so it is immediately ready for
+  // typing (#35 acceptance criteria). Consume the one-shot request afterwards.
+  useEffect(() => {
+    if (focusRequest?.kind === 'content-label' && focusRequest.id === snippet.id) {
+      labelRef.current?.focus()
+      labelRef.current?.select()
+      clearFocusRequest()
+    }
+  }, [focusRequest, snippet.id, clearFocusRequest])
 
   // Which `{{variables}}` this snippet references, split into filled vs unset.
   const { used, missing } = classifyVariables(snippet.content, variables)
@@ -111,9 +125,12 @@ export function SnippetButton({
           {index + 1} ↗
         </span>
         <input
+          id={contentLabelFieldId(snippet.id)}
+          ref={labelRef}
           value={snippet.label}
           onChange={(e) => updateSnippet(cardId, snippet.id, { label: e.target.value })}
-          placeholder="Label…"
+          placeholder={BUILD_LANGUAGE.content.labelPlaceholder}
+          aria-label="Content label"
           className="flex-1 bg-transparent text-sm font-medium outline-none"
         />
         <button
@@ -136,7 +153,7 @@ export function SnippetButton({
         <button
           onClick={() => removeSnippet(cardId, snippet.id)}
           className="rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
-          title="Delete snippet"
+          title={BUILD_LANGUAGE.content.singular + ' — delete'}
         >
           ✕
         </button>

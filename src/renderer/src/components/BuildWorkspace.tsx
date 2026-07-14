@@ -51,11 +51,12 @@ export function BuildWorkspace(): JSX.Element {
         <button
           onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
           className="flex items-center gap-2 rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-          title="Search cards and snippets (/ or Ctrl/Cmd+K)"
+          title="Search steps and paste-ready content (/ or Ctrl/Cmd+K)"
         >
           🔍 Search
           <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono text-xs">/</kbd>
         </button>
+        <span className="text-deck-border" aria-hidden>·</span>
         <button
           onClick={() => exportDeck(deck.id)}
           className="rounded px-3 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
@@ -101,7 +102,7 @@ export function BuildWorkspace(): JSX.Element {
             <span className="text-deck-border">·</span>
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">←</kbd>
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">→</kbd>
-            <span>cards</span>
+            <span>steps</span>
             <span className="text-deck-border">·</span>
             <kbd className="rounded bg-deck-card px-1.5 py-0.5 font-mono">/</kbd>
             <span>search</span>
