@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { cx } from '../src/renderer/src/lib/ui/classNames'
-import { buttonClasses, toneClasses } from '../src/renderer/src/lib/ui/variants'
+import { buttonClasses, resolveAriaPressed, toneClasses } from '../src/renderer/src/lib/ui/variants'
 import { prefersReducedMotion } from '../src/renderer/src/lib/ui/reducedMotion'
 import { FOCUSABLE_SELECTOR, getFocusableElements } from '../src/renderer/src/lib/ui/focusTrap'
+import {
+  getNextSegmentIndex,
+  isSegmentedNavKey
+} from '../src/renderer/src/lib/ui/segmentedControlNav'
 
 describe('ui: cx (className merge)', () => {
   it('joins truthy class names with a single space', () => {
@@ -102,5 +106,62 @@ describe('ui: focus trap helpers', () => {
   it('returns an empty array for a null/undefined container', () => {
     expect(getFocusableElements(null)).toEqual([])
     expect(getFocusableElements(undefined)).toEqual([])
+  })
+})
+
+describe('ui: resolveAriaPressed (Button toggle semantics)', () => {
+  it('omits aria-pressed entirely when neither `active` nor an explicit value is supplied', () => {
+    expect(resolveAriaPressed(undefined, undefined)).toBeUndefined()
+  })
+
+  it('exposes the toggle state via aria-pressed when `active` is explicitly supplied', () => {
+    expect(resolveAriaPressed(true, undefined)).toBe(true)
+    expect(resolveAriaPressed(false, undefined)).toBe(false)
+  })
+
+  it('preserves an explicitly provided aria-pressed over the derived `active` value', () => {
+    expect(resolveAriaPressed(true, 'mixed')).toBe('mixed')
+    expect(resolveAriaPressed(undefined, false)).toBe(false)
+  })
+})
+
+describe('ui: segmented control keyboard navigation helpers', () => {
+  it('recognizes the roving-tabindex navigation keys', () => {
+    expect(isSegmentedNavKey('ArrowLeft')).toBe(true)
+    expect(isSegmentedNavKey('ArrowRight')).toBe(true)
+    expect(isSegmentedNavKey('ArrowUp')).toBe(true)
+    expect(isSegmentedNavKey('ArrowDown')).toBe(true)
+    expect(isSegmentedNavKey('Home')).toBe(true)
+    expect(isSegmentedNavKey('End')).toBe(true)
+    expect(isSegmentedNavKey('Enter')).toBe(false)
+    expect(isSegmentedNavKey('a')).toBe(false)
+  })
+
+  it('moves right/down to the next index and wraps at the end', () => {
+    expect(getNextSegmentIndex('ArrowRight', 0, 3)).toBe(1)
+    expect(getNextSegmentIndex('ArrowDown', 2, 3)).toBe(0)
+  })
+
+  it('moves left/up to the previous index and wraps at the start', () => {
+    expect(getNextSegmentIndex('ArrowLeft', 0, 3)).toBe(2)
+    expect(getNextSegmentIndex('ArrowUp', 2, 3)).toBe(1)
+  })
+
+  it('Home/End jump to the first/last option', () => {
+    expect(getNextSegmentIndex('Home', 2, 3)).toBe(0)
+    expect(getNextSegmentIndex('End', 0, 3)).toBe(2)
+  })
+
+  it('skips disabled options when moving and when jumping to Home/End', () => {
+    const isDisabled = (i: number): boolean => i === 1
+    expect(getNextSegmentIndex('ArrowRight', 0, 3, isDisabled)).toBe(2)
+    expect(getNextSegmentIndex('Home', 2, 3, isDisabled)).toBe(0)
+
+    const firstDisabled = (i: number): boolean => i === 0
+    expect(getNextSegmentIndex('Home', 2, 3, firstDisabled)).toBe(1)
+  })
+
+  it('returns null when every option is disabled', () => {
+    expect(getNextSegmentIndex('ArrowRight', 0, 3, () => true)).toBeNull()
   })
 })

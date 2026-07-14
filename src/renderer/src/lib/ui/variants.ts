@@ -71,3 +71,23 @@ const TONE: Record<Tone, string> = {
 export function toneClasses(tone: Tone): string {
   return TONE[tone]
 }
+
+/** The subset of `aria-pressed` values React's typings accept on a button. */
+export type AriaPressedValue = boolean | 'true' | 'false' | 'mixed' | undefined
+
+/**
+ * Resolves the `aria-pressed` value for a toggle-style {@link Button}.
+ *
+ * Ordinary buttons that never receive an `active` prop must not gain
+ * `aria-pressed` at all (it's not a toggle). Buttons that do receive an
+ * explicit `active` (true or false) are toggles and must announce their
+ * state via `aria-pressed`. A caller-supplied `aria-pressed` always wins,
+ * so call sites can opt into `"mixed"` or override the derived value.
+ */
+export function resolveAriaPressed(
+  active: boolean | undefined,
+  explicitAriaPressed: AriaPressedValue
+): AriaPressedValue {
+  if (explicitAriaPressed !== undefined) return explicitAriaPressed
+  return active
+}
