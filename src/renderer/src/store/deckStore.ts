@@ -16,6 +16,7 @@ import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import type { NewDemoChoice } from '@shared/library'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
+import { BUILD_LANGUAGE } from '@shared/buildLanguage'
 import { useSettingsStore } from './settingsStore'
 import { playCopyChime } from '../lib/copySound'
 
@@ -27,11 +28,29 @@ function uid(): string {
   return generateId()
 }
 
+/**
+ * A one-shot request to move keyboard focus to a just-created field (#35), so
+ * newly added steps and paste-ready content are immediately ready for typing.
+ * The owning component consumes it (focuses the matching field) and then calls
+ * {@link DeckState.clearFocusRequest}. DOM-free so the transition is testable.
+ */
+export interface FocusRequest {
+  /** `step-title` targets a step's title input; `content-label` a block label. */
+  kind: 'step-title' | 'content-label'
+  /** The card id (for `step-title`) or snippet id (for `content-label`). */
+  id: string
+}
+
 interface DeckState {
   // Data
   summaries: DeckSummary[]
   deck: Deck | null
   activeCardId: string | null
+  /**
+   * Pending autofocus request for a newly created step or paste-ready content
+   * block (#35). Null when there is nothing to focus.
+   */
+  focusRequest: FocusRequest | null
 
   // UI status
   loading: boolean
@@ -100,6 +119,9 @@ interface DeckState {
    * bounds and always-on-top state via the presenter window IPC.
    */
   exitPresent: () => void
+
+  /** Clear a consumed autofocus request (#35). */
+  clearFocusRequest: () => void
 
   // Card ops
   addCard: () => void
@@ -223,6 +245,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     summaries: [],
     deck: null,
     activeCardId: null,
+    focusRequest: null,
     loading: false,
     saving: false,
     mode: 'edit',
@@ -383,10 +406,14 @@ export const useDeckStore = create<DeckState>((set, get) => {
       void window.cuedeck.window.setPresenter(false)
     },
 
+    clearFocusRequest: () => set({ focusRequest: null }),
+
     addCard: () => {
-      const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }
+      const card: CueCard = { id: uid(), title: BUILD_LANGUAGE.step.defaultTitle, notes: '', snippets: [] }
       mutate((d) => ({ ...d, cards: [...d.cards, card] }))
-      set({ activeCardId: card.id })
+      // Focus the new step and queue an autofocus on its title so it is
+      // immediately ready for typing (#35 acceptance criteria).
+      set({ activeCardId: card.id, focusRequest: { kind: 'step-title', id: card.id } })
     },
 
     updateCard: (cardId, patch) =>
@@ -455,13 +482,15 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     addSnippet: (cardId) => {
-      const snippet: Snippet = { id: uid(), label: 'New Snippet', content: '' }
+      const snippet: Snippet = { id: uid(), label: BUILD_LANGUAGE.content.defaultLabel, content: '' }
       mutate((d) => ({
         ...d,
         cards: d.cards.map((c) =>
           c.id === cardId ? { ...c, snippets: [...c.snippets, snippet] } : c
         )
       }))
+      // Queue an autofocus on the new block's label so it is ready for typing.
+      set({ focusRequest: { kind: 'content-label', id: snippet.id } })
     },
 
     updateSnippet: (cardId, snippetId, patch) =>
