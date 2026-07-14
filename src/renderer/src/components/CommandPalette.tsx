@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { isTypingTarget } from '@shared/hotkeys'
 import { kindLabel, searchDeck, type SearchResult } from '@shared/search'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 
 /**
  * Custom DOM event other components can dispatch to open the palette (e.g. a
@@ -37,6 +38,9 @@ export function CommandPalette(): JSX.Element | null {
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
+
+  // Trap focus inside the palette while open and restore it on close (#39).
+  const trapRef = useFocusTrap<HTMLDivElement>(open && !!deck)
 
   const results = useMemo(() => searchDeck(deck, query), [deck, query])
 
@@ -147,6 +151,7 @@ export function CommandPalette(): JSX.Element | null {
       role="presentation"
     >
       <div
+        ref={trapRef}
         className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-deck-border bg-deck-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
@@ -160,6 +165,7 @@ export function CommandPalette(): JSX.Element | null {
           </span>
           <input
             ref={inputRef}
+            data-autofocus
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
