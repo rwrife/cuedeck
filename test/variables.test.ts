@@ -6,7 +6,8 @@ import {
   collectReferencedVariables,
   extractVariableNames,
   hasVariables,
-  renderSnippet
+  renderSnippet,
+  validateVariableName
 } from '../src/shared/variables'
 
 /**
@@ -150,5 +151,40 @@ describe('VARIABLE_NAME_PATTERN', () => {
     for (const bad of ['', 'a b', 'a/b', 'a:b', '{{x}}']) {
       expect(VARIABLE_NAME_PATTERN.test(bad)).toBe(false)
     }
+  })
+
+  describe('validateVariableName (#38)', () => {
+    it('accepts valid names', () => {
+      expect(validateVariableName('orderId').ok).toBe(true)
+      expect(validateVariableName('  test.email  ').ok).toBe(true)
+      expect(validateVariableName('env-url').ok).toBe(true)
+    })
+
+    it('rejects blank names with guidance', () => {
+      const r = validateVariableName('   ')
+      expect(r.ok).toBe(false)
+      expect(r.reason).toMatch(/empty/i)
+    })
+
+    it('rejects illegal characters with guidance', () => {
+      const r = validateVariableName('a b')
+      expect(r.ok).toBe(false)
+      expect(r.reason).toMatch(/letters|spaces/i)
+    })
+
+    it('rejects collisions with the offending name', () => {
+      const r = validateVariableName('foo', ['foo', 'bar'])
+      expect(r.ok).toBe(false)
+      expect(r.reason).toContain('foo')
+      expect(r.reason).toMatch(/exists/i)
+    })
+
+    it('allows renaming a key to itself', () => {
+      expect(validateVariableName('foo', ['foo', 'bar'], 'foo').ok).toBe(true)
+    })
+
+    it('still catches collisions when renaming to a different existing key', () => {
+      expect(validateVariableName('bar', ['foo', 'bar'], 'foo').ok).toBe(false)
+    })
   })
 })
