@@ -13,6 +13,7 @@ import {
   windowModeFor
 } from '@shared/workspace'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
+import type { NewDemoChoice } from '@shared/library'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
 import { useSettingsStore } from './settingsStore'
@@ -61,8 +62,15 @@ interface DeckState {
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
   openDeck: (id: string) => Promise<void>
-  createDeck: (name: string) => Promise<void>
+  createDeck: (name: string, template?: NewDemoChoice) => Promise<void>
   deleteDeck: (id: string) => Promise<void>
+  /** Rename a deck by id, surfacing visible success/error feedback (#34). */
+  renameDeck: (id: string, name: string) => Promise<void>
+  /**
+   * Duplicate a deck by id. The new copy appears in the Library with visible
+   * feedback; the original is untouched (#34).
+   */
+  duplicateDeck: (id: string) => Promise<void>
   closeDeck: () => void
 
   // Import / export
@@ -250,18 +258,56 @@ export const useDeckStore = create<DeckState>((set, get) => {
       })
     },
 
-    createDeck: async (name) => {
-      const deck = await window.cuedeck.decks.create(name)
+    createDeck: async (name, template) => {
+      const deck = await window.cuedeck.decks.create(name, template)
       await get().refreshSummaries()
-      // A freshly created deck is open, so land the user in Build (#33).
-      set({ deck, activeCardId: null, workspace: modeAfterOpenDeck(), mode: 'edit' })
+      // A freshly created deck is open, so land the user in Build (#33) on its
+      // focused first card (blank demos + the starter template ship with at
+      // least one card, so this is never an inert empty editor) (#34).
+      set({
+        deck,
+        activeCardId: deck.cards[0]?.id ?? null,
+        workspace: modeAfterOpenDeck(),
+        mode: 'edit'
+      })
     },
 
     deleteDeck: async (id) => {
-      await window.cuedeck.decks.remove(id)
+      const summary = get().summaries.find((s) => s.id === id)
+      const ok = await window.cuedeck.decks.remove(id)
       const { deck } = get()
       if (deck?.id === id) set({ deck: null, activeCardId: null })
       await get().refreshSummaries()
+      set({
+        statusMessage: ok
+          ? `Deleted “${summary?.name ?? 'deck'}”.`
+          : `Could not delete “${summary?.name ?? 'deck'}”.`
+      })
+    },
+
+    renameDeck: async (id, name) => {
+      const result = await window.cuedeck.decks.rename(id, name)
+      if (!result.ok) {
+        set({ statusMessage: result.error ?? 'Rename failed.' })
+        return
+      }
+      await get().refreshSummaries()
+      // Keep an open deck's title in sync when it is the one being renamed.
+      const { deck } = get()
+      if (deck?.id === id && result.summary) {
+        set({ deck: { ...deck, name: result.summary.name } })
+      }
+      set({ statusMessage: `Renamed to “${result.summary?.name ?? name.trim()}”.` })
+    },
+
+    duplicateDeck: async (id) => {
+      const result = await window.cuedeck.decks.duplicate(id)
+      if (!result.ok) {
+        set({ statusMessage: result.error ?? 'Duplicate failed.' })
+        return
+      }
+      await get().refreshSummaries()
+      set({ statusMessage: `Created “${result.summary?.name ?? 'copy'}”.` })
     },
 
     closeDeck: () => {

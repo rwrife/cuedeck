@@ -98,6 +98,20 @@ export interface ImportResult {
 }
 
 /**
+ * Result of a deck mutation (rename / duplicate / delete) surfaced to the
+ * Library so it can show visible success or error feedback (#34). `ok` is true
+ * only when the operation actually changed disk. `summary` carries the affected
+ * deck (the renamed deck, or the freshly created duplicate) when relevant.
+ */
+export interface DeckActionResult {
+  ok: boolean
+  /** Affected deck summary (renamed deck / new duplicate), when applicable. */
+  summary?: DeckSummary
+  /** Human-readable failure reason (present when a real error occurred). */
+  error?: string
+}
+
+/**
  * The current deck schema version emitted by this build.
  *
  * - v1: original deck model (no variables).
