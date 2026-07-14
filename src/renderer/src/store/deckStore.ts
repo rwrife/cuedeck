@@ -112,14 +112,18 @@ interface DeckState {
    * the currently-open one; keeps the open deck's in-memory name in sync
    * when it's the one being renamed. Explicit success/failure feedback via
    * `statusMessage` and the `'rename'` operation error — never a silent
-   * no-op.
+   * no-op. When `id` is the currently-open deck, flushes its pending edits
+   * first (code-quality follow-up to #34) so a concurrent debounced autosave
+   * can never race the filesystem rename; a flush failure aborts the rename,
+   * preserves the open deck untouched, and surfaces the typed save error.
    */
   renameDeck: (id: string, name: string) => Promise<void>
   /**
    * Duplicate a deck (#34): the copy gets a fresh id and a non-colliding
    * "<name> copy" name (assigned by the main process) and appears in the
    * Library immediately. Explicit success/failure feedback, matching
-   * {@link renameDeck}.
+   * {@link renameDeck} — including the same open-deck pre-flush gating, so a
+   * duplicate can never race a pending autosave of the source deck.
    */
   duplicateDeck: (id: string) => Promise<void>
   closeDeck: () => Promise<void>
@@ -272,6 +276,31 @@ export const useDeckStore = create<DeckState>((set, get) => {
     if (!deck) return
     set({ deck: fn(deck) })
     saveCoordinator.noteEdit()
+  }
+
+  /**
+   * Gate a Library filesystem operation (rename/duplicate) on `id` against a
+   * concurrent autosave of the *same* deck (code-quality follow-up to #34):
+   * Library is reachable without closing the open deck, so its pending
+   * debounced edit could otherwise still be in flight or scheduled when a
+   * rename/duplicate touches the same file underneath it. When `id` is the
+   * currently-open deck, flushes it first and returns `true` only if that
+   * flush actually succeeded. A flush failure aborts the caller — the open
+   * deck is left untouched and the typed `operation` error + `statusMessage`
+   * are set from the save failure, rather than proceeding against stale
+   * on-disk data. A no-op (always `true`, no flush) when `id` isn't the open
+   * deck, so browsing/acting on other decks never pays for an unrelated
+   * flush.
+   */
+  async function flushIfOpenDeck(id: string, operation: DeckOperation): Promise<boolean> {
+    if (get().deck?.id !== id) return true
+    const view = await saveCoordinator.flush()
+    if (view.status !== 'error') return true
+    const message = view.error?.message ?? 'Could not save pending changes.'
+    const verb = operation === 'rename' ? 'Rename' : 'Duplicate'
+    get().setOperationError(operation, message)
+    set({ statusMessage: `${verb} failed: ${message}`, statusTone: 'danger' })
+    return false
   }
 
   /**
@@ -438,6 +467,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     renameDeck: async (id, name) => {
+      if (!(await flushIfOpenDeck(id, 'rename'))) return
       try {
         const result = await window.cuedeck.decks.rename(id, name)
         if (result.ok && result.summary) {
@@ -462,6 +492,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     duplicateDeck: async (id) => {
+      if (!(await flushIfOpenDeck(id, 'duplicate'))) return
       try {
         const result = await window.cuedeck.decks.duplicate(id)
         if (result.ok && result.summary) {

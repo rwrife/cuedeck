@@ -348,6 +348,97 @@ describe('duplicateDeck (#34)', () => {
   })
 })
 
+describe('renameDeck flushes the currently-open deck before renaming (persistence race fix)', () => {
+  it('flushes pending edits on the open deck before renaming it', async () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard() // pending debounce, not yet flushed
+    expect(saveMock).not.toHaveBeenCalled()
+
+    await useDeckStore.getState().renameDeck('deck-1', 'New Name')
+
+    // The flush must land BEFORE the rename IPC call, not merely at some point.
+    expect(saveMock).toHaveBeenCalledTimes(1)
+    expect(saveMock.mock.calls[0][0].id).toBe('deck-1')
+    expect(renameMock).toHaveBeenCalledWith('deck-1', 'New Name')
+    expect(useDeckStore.getState().statusMessage).toContain('New Name')
+  })
+
+  it('aborts the rename and preserves the open deck untouched when the flush fails', async () => {
+    saveMock.mockImplementation(async () => {
+      throw new Error('disk full')
+    })
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard()
+
+    await useDeckStore.getState().renameDeck('deck-1', 'New Name')
+
+    // Never proceeds against stale on-disk data after a failed flush.
+    expect(renameMock).not.toHaveBeenCalled()
+    const state = useDeckStore.getState()
+    expect(state.deck?.id).toBe('deck-1')
+    expect(state.deck?.name).toBe('Test Deck')
+    expect(state.workspaceMode).toBe('build')
+    expect(state.errors.rename?.message).toBe('disk full')
+    expect(state.statusMessage).toContain('disk full')
+    expect(state.statusTone).toBe('danger')
+  })
+
+  it('does not flush the open deck when renaming a different deck', async () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard() // pending debounce on the OPEN deck, unrelated to the target
+
+    await useDeckStore.getState().renameDeck('deck-9', 'New Name')
+
+    expect(saveMock).not.toHaveBeenCalled()
+    expect(renameMock).toHaveBeenCalledWith('deck-9', 'New Name')
+    expect(useDeckStore.getState().deck?.id).toBe('deck-1')
+  })
+})
+
+describe('duplicateDeck flushes the currently-open deck before duplicating (persistence race fix)', () => {
+  it('flushes pending edits on the open deck before duplicating it', async () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard()
+    expect(saveMock).not.toHaveBeenCalled()
+
+    await useDeckStore.getState().duplicateDeck('deck-1')
+
+    expect(saveMock).toHaveBeenCalledTimes(1)
+    expect(saveMock.mock.calls[0][0].id).toBe('deck-1')
+    expect(duplicateMock).toHaveBeenCalledWith('deck-1')
+    expect(useDeckStore.getState().statusMessage).toContain('Duplicated')
+  })
+
+  it('aborts the duplicate and preserves the open deck untouched when the flush fails', async () => {
+    saveMock.mockImplementation(async () => {
+      throw new Error('disk full')
+    })
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard()
+
+    await useDeckStore.getState().duplicateDeck('deck-1')
+
+    expect(duplicateMock).not.toHaveBeenCalled()
+    const state = useDeckStore.getState()
+    expect(state.deck?.id).toBe('deck-1')
+    expect(state.workspaceMode).toBe('build')
+    expect(state.errors.duplicate?.message).toBe('disk full')
+    expect(state.statusMessage).toContain('disk full')
+    expect(state.statusTone).toBe('danger')
+  })
+
+  it('does not flush the open deck when duplicating a different deck', async () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard() // pending debounce on the OPEN deck, unrelated to the target
+
+    await useDeckStore.getState().duplicateDeck('deck-9')
+
+    expect(saveMock).not.toHaveBeenCalled()
+    expect(duplicateMock).toHaveBeenCalledWith('deck-9')
+    expect(useDeckStore.getState().deck?.id).toBe('deck-1')
+  })
+})
+
 describe('deleteDeck surfaces typed result feedback (#34)', () => {
   it('surfaces a success status message on a normal delete', async () => {
     await useDeckStore.getState().deleteDeck('deck-9')
