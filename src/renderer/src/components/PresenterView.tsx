@@ -96,14 +96,15 @@ function PresenterSnippet({
  * user can drive a demo without the authoring chrome getting in the way.
  *
  * The window-level side effects (compact size + always-on-top, restored on
- * exit) are handled by the store's `setMode` → `window.setPresenter` IPC; this
- * component only renders the layout and the read-only interactions.
+ * exit) are handled by the store's `enterPresent`/`exitPresent` →
+ * `window.setPresenter` IPC; this component only renders the layout and the
+ * read-only interactions.
  */
 export function PresenterView(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const activeCardId = useDeckStore((s) => s.activeCardId)
   const stepActiveCard = useDeckStore((s) => s.stepActiveCard)
-  const setMode = useDeckStore((s) => s.setMode)
+  const exitPresent = useDeckStore((s) => s.exitPresent)
 
   const index = deck.cards.findIndex((c) => c.id === activeCardId)
   const card = index >= 0 ? deck.cards[index] : undefined
@@ -127,7 +128,7 @@ export function PresenterView(): JSX.Element {
           variant="ghost"
           size="sm"
           icon={<CloseIcon />}
-          onClick={() => setMode('edit')}
+          onClick={() => exitPresent()}
           title="Exit Presenter Mode (F5 or Ctrl/Cmd+P)"
         >
           Exit

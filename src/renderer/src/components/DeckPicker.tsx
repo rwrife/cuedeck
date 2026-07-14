@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
-import { OPEN_SETTINGS_EVENT } from './SettingsModal'
 import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import { TextField } from './ui/TextField'
 import { EmptyState } from './ui/EmptyState'
 import { StatusBanner } from './ui/StatusBanner'
-import { ClapperboardIcon, SettingsIcon, TrashIcon } from './ui/icons'
+import { ClapperboardIcon, TrashIcon } from './ui/icons'
 
 /**
- * Landing screen: pick an existing deck or create a new one.
+ * Library mode content (#33 Studio shell): pick an existing deck or create a
+ * new one. Settings now lives in the shared Studio header, so this surface
+ * only owns deck-collection actions (create, import, open, export, delete).
  */
 export function DeckPicker(): JSX.Element {
   const summaries = useDeckStore((s) => s.summaries)
@@ -54,12 +55,6 @@ export function DeckPicker(): JSX.Element {
         <Button variant="secondary" onClick={importDeck} title="Import a deck from a .json file">
           Import…
         </Button>
-        <IconButton
-          label="Open settings"
-          icon={<SettingsIcon />}
-          variant="secondary"
-          onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
-        />
       </div>
 
       {statusMessage && (

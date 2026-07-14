@@ -116,12 +116,12 @@ export function applyLiveCommand(message: LiveCommandMessage): LiveCommandReply 
     }
 
     case 'enterPresenter': {
-      store.setMode('present')
+      store.enterPresent()
       return { ok: true }
     }
 
     case 'exitPresenter': {
-      store.setMode('edit')
+      store.exitPresent()
       return { ok: true }
     }
 
@@ -136,8 +136,8 @@ export function applyLiveCommand(message: LiveCommandMessage): LiveCommandReply 
 
 /** Project the current store state and push a fresh snapshot to main. */
 export function publishLiveState(): void {
-  const { deck, activeCardId, mode } = useDeckStore.getState()
-  const state = buildLiveState(deck, activeCardId, mode === 'present')
+  const { deck, activeCardId, workspaceMode } = useDeckStore.getState()
+  const state = buildLiveState(deck, activeCardId, workspaceMode === 'present')
   window.cuedeck.live.publishState(state)
 }
 
@@ -160,14 +160,14 @@ export function initLiveControlBridge(): () => void {
   // Publish once immediately so getState is correct before any change fires.
   publishLiveState()
 
-  // Re-publish whenever the deck, active card, or presenter mode changes. The
+  // Re-publish whenever the deck, active card, or Studio mode changes. The
   // full deck object identity changes on any edit, so this also keeps card
   // titles / snippet lists in the snapshot current.
   const unsubscribeStore = useDeckStore.subscribe((state, prev) => {
     if (
       state.deck !== prev.deck ||
       state.activeCardId !== prev.activeCardId ||
-      state.mode !== prev.mode
+      state.workspaceMode !== prev.workspaceMode
     ) {
       publishLiveState()
     }
