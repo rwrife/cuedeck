@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { OPEN_SETTINGS_EVENT } from './SettingsModal'
+import { Button, IconButton, Icon } from '../ui'
 
 /**
  * Landing screen: pick an existing deck or create a new one.
@@ -26,7 +27,10 @@ export function DeckPicker(): JSX.Element {
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col gap-6 p-10">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">🎬 CueDeck</h1>
+        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+          <Icon name="deck" size={28} label={null} />
+          CueDeck
+        </h1>
         <p className="mt-1 text-deck-muted">Your demo cue cards + instant clipboard snippets.</p>
       </header>
 
@@ -38,39 +42,36 @@ export function DeckPicker(): JSX.Element {
           placeholder="New deck name…"
           className="flex-1 rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 outline-none placeholder:text-deck-muted focus:border-deck-accent"
         />
-        <button
-          onClick={handleCreate}
-          className="rounded-lg bg-deck-accent px-5 py-2.5 font-medium text-white transition hover:bg-deck-accentHover"
-        >
+        <Button size="lg" onClick={handleCreate}>
           Create
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          size="lg"
           onClick={importDeck}
-          className="rounded-lg border border-deck-border bg-deck-panel px-5 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
           title="Import a deck from a .json file"
         >
           Import…
-        </button>
-        <button
+        </Button>
+        <IconButton
+          icon="settings"
+          size="lg"
+          variant="secondary"
           onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
-          className="rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 font-medium text-deck-text transition hover:border-deck-accent"
           title="Settings — theme, font size, and preferences"
-          aria-label="Open settings"
-        >
-          ⚙
-        </button>
+          label="Open settings"
+        />
       </div>
 
       {statusMessage && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-deck-border bg-deck-panel px-4 py-2.5 text-sm">
           <span className="min-w-0 break-words text-deck-text">{statusMessage}</span>
-          <button
+          <IconButton
+            icon="close"
+            size="sm"
             onClick={() => setStatusMessage(null)}
-            className="shrink-0 rounded px-1.5 text-deck-muted transition hover:text-deck-text"
-            title="Dismiss"
-          >
-            ✕
-          </button>
+            label="Dismiss message"
+          />
         </div>
       )}
 

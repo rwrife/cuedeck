@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, clipboard, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, clipboard, shell, nativeTheme, Menu } from 'electron'
 import { join } from 'path'
 import { IPC } from '../shared/ipc'
 import { PRESENTER_WINDOW_SIZE } from '../shared/presenter'
@@ -116,6 +116,13 @@ function registerCoreHandlers(): void {
 }
 
 app.whenReady().then(async () => {
+  // Remove the default Electron application menu (#32). CueDeck has no use for
+  // the stock File/Edit/View/Window/Help chrome (and its Reload/DevTools/Zoom
+  // accelerators), which only clutter the app and expose dev affordances in
+  // production. `null` clears the menu on Windows/Linux and empties the macOS
+  // menu bar. In-app affordances cover everything the app actually needs.
+  Menu.setApplicationMenu(null)
+
   // Warm the settings cache before the window is created so the initial
   // background color + always-on-top default reflect saved preferences.
   await initSettings()

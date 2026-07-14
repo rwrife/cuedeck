@@ -19,7 +19,21 @@ export default {
           accent: 'var(--deck-accent)',
           accentHover: 'var(--deck-accent-hover)',
           text: 'var(--deck-text)',
-          muted: 'var(--deck-muted)'
+          muted: 'var(--deck-muted)',
+          status: {
+            neutral: 'var(--deck-status-neutral)',
+            success: 'var(--deck-status-success)',
+            warning: 'var(--deck-status-warning)',
+            error: 'var(--deck-status-error)',
+            info: 'var(--deck-status-info)'
+          },
+          statusSurface: {
+            neutral: 'var(--deck-status-neutral-surface)',
+            success: 'var(--deck-status-success-surface)',
+            warning: 'var(--deck-status-warning-surface)',
+            error: 'var(--deck-status-error-surface)',
+            info: 'var(--deck-status-info-surface)'
+          }
         }
       },
       fontSize: {
