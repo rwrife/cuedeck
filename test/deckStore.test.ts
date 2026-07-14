@@ -545,3 +545,72 @@ describe('addCard sets a focus request (#34/Accessibility)', () => {
     expect(useDeckStore.getState().focusCardId).toBeNull()
   })
 })
+
+describe('statusMessage is scoped to the current deck/mode, not leaked across it (#35 review)', () => {
+  it('openDeck clears a stale Library statusMessage so it cannot reappear in Build', async () => {
+    useDeckStore.setState({
+      deck: null,
+      workspaceMode: 'library',
+      statusMessage: 'Imported “Old Deck”.'
+    })
+
+    loadMock.mockResolvedValueOnce(makeDeck('deck-1'))
+    await useDeckStore.getState().openDeck('deck-1')
+
+    expect(useDeckStore.getState().workspaceMode).toBe('build')
+    expect(useDeckStore.getState().statusMessage).toBeNull()
+  })
+
+  it('createDeck clears a stale Library statusMessage so it cannot reappear in Build', async () => {
+    useDeckStore.setState({
+      deck: null,
+      workspaceMode: 'library',
+      statusMessage: 'Exported to C:\\decks\\old.json'
+    })
+
+    createMock.mockResolvedValueOnce(makeDeck('new-deck'))
+    await useDeckStore.getState().createDeck('New')
+
+    expect(useDeckStore.getState().workspaceMode).toBe('build')
+    expect(useDeckStore.getState().statusMessage).toBeNull()
+  })
+
+  it('closeDeck clears a Build-local statusMessage so it cannot reappear in Library', async () => {
+    useDeckStore.setState({
+      deck: makeDeck('deck-1'),
+      workspaceMode: 'build',
+      statusMessage: 'Exported to C:\\decks\\deck-1.json'
+    })
+
+    await useDeckStore.getState().closeDeck()
+
+    expect(useDeckStore.getState().workspaceMode).toBe('library')
+    expect(useDeckStore.getState().statusMessage).toBeNull()
+  })
+
+  it('deleteDeck replaces a stale statusMessage with delete feedback when it closes the open deck', async () => {
+    useDeckStore.setState({
+      deck: makeDeck('deck-1'),
+      workspaceMode: 'build',
+      statusMessage: 'Exported to C:\\decks\\deck-1.json'
+    })
+
+    await useDeckStore.getState().deleteDeck('deck-1')
+
+    // Reconciled with Library's explicit delete feedback (#34): closing the
+    // open deck first clears the stale Build-local export toast, then the
+    // typed delete result replaces it with "Deck deleted." — so the stale
+    // message can never leak into Library, and the deletion is confirmed.
+    expect(useDeckStore.getState().deck).toBeNull()
+    expect(useDeckStore.getState().statusMessage).toBe('Deck deleted.')
+    expect(useDeckStore.getState().statusTone).toBe('success')
+  })
+
+  it('setStatusMessage still works normally for an intentional in-context message', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build', statusMessage: null })
+
+    useDeckStore.getState().setStatusMessage('Exported to C:\\decks\\deck-1.json')
+
+    expect(useDeckStore.getState().statusMessage).toBe('Exported to C:\\decks\\deck-1.json')
+  })
+})

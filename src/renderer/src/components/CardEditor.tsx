@@ -11,7 +11,7 @@ import { TextField } from './ui/TextField'
 import { TextArea } from './ui/TextArea'
 import { EmptyState } from './ui/EmptyState'
 import { SegmentedControl } from './ui/SegmentedControl'
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon, TrashIcon } from './ui/icons'
+import { PlusIcon, TrashIcon } from './ui/icons'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
 const SNIPPET_DND_TYPE = 'application/x-cuedeck-snippet'
@@ -29,9 +29,10 @@ interface Props {
 /**
  * The step editor (#35 guided Build workspace): title, talking points, and
  * the list of paste-ready content for the active step (reorderable via each
- * item's grip). Deck-level Variables and Markdown formatting help are tucked
- * into contextual, collapsed disclosures so they never compete with the
- * primary "write this step" flow.
+ * item's grip). Markdown formatting help sits in its own contextual
+ * disclosure next to the notes toggle; deck-level Variables render directly
+ * in the Advanced area below, relying on VariablesPanel's own single
+ * collapsed-by-default disclosure rather than a second wrapping toggle.
  */
 export function CardEditor({ onAddCard }: Props): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
@@ -51,9 +52,6 @@ export function CardEditor({ onAddCard }: Props): JSX.Element {
   // Id of the paste-ready item most recently created but not yet focused
   // (#35) — passed to its SnippetButton so it mounts expanded and focused.
   const [pendingFocusSnippetId, setPendingFocusSnippetId] = useState<string | null>(null)
-  // Deck-level Variables + Markdown help are advanced/infrequent; keep them
-  // collapsed by default so they never compete with the primary flow.
-  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const titleRef = useRef<HTMLInputElement | null>(null)
 
@@ -208,28 +206,20 @@ export function CardEditor({ onAddCard }: Props): JSX.Element {
       </div>
 
       {/* Advanced: deck-level Variables — technical, infrequent configuration
-          that applies to the whole deck, not just this step, so it's tucked
-          into its own collapsed disclosure below the primary flow (#35). */}
-      <div className="rounded-lg border border-deck-border bg-deck-panel">
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((v) => !v)}
-          aria-expanded={advancedOpen}
-          className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-deck-muted transition hover:text-deck-text"
-        >
-          <span className="inline-block w-3 text-center">
-            {advancedOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
-          </span>
+          that applies to the whole deck, not just this step. VariablesPanel
+          already owns its own collapsed-by-default disclosure (plus the
+          "N referenced" warning nudge), so this area is a plain labeled
+          section rather than a second toggle — variables need only one
+          expansion, and the warning is never hidden behind two clicks (#35
+          review). */}
+      <div>
+        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-deck-muted">
           Advanced
-        </button>
-        {advancedOpen && (
-          <div className="border-t border-deck-border p-3">
-            <p className="mb-2 text-xs text-deck-muted">
-              Variables apply to the whole deck, not just this step.
-            </p>
-            <VariablesPanel />
-          </div>
-        )}
+        </span>
+        <p className="mb-2 text-xs text-deck-muted">
+          Variables apply to the whole deck, not just this step.
+        </p>
+        <VariablesPanel />
       </div>
     </div>
   )

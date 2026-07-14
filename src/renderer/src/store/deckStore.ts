@@ -392,8 +392,12 @@ export const useDeckStore = create<DeckState>((set, get) => {
           deck,
           loading: false,
           activeCardId: deck.cards[0]?.id ?? null,
-          // Opening a deck moves the Studio from Library to Build (#33).
-          workspaceMode: modeAfterOpenDeck()
+          // Opening a deck moves the Studio from Library to Build (#33) —
+          // clear any statusMessage from the surface we're leaving (e.g. a
+          // Library import/export toast) so it can't reappear as stale,
+          // unrelated feedback on the new Build surface (#35 review).
+          workspaceMode: modeAfterOpenDeck(),
+          statusMessage: null
         })
         get().clearOperationError('open')
       } catch (err) {
@@ -411,8 +415,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
         await get().refreshSummaries()
         // Fresh deck → fresh, trustworthy save baseline.
         saveCoordinator.reset()
-        // Creating a deck moves the Studio from Library to Build (#33).
-        set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck() })
+        // Creating a deck moves the Studio from Library to Build (#33) —
+        // clear any leftover Library statusMessage for the same reason as
+        // openDeck above (#35 review).
+        set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck(), statusMessage: null })
         get().clearOperationError('create')
       } catch (err) {
         get().setOperationError('create', errorMessageOf(err))
@@ -455,7 +461,15 @@ export const useDeckStore = create<DeckState>((set, get) => {
         saveCoordinator.reset()
         // Don't strand the user in a tiny always-on-top presenter window.
         if (workspaceMode === 'present') void window.cuedeck.window.setPresenter(false)
-        set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
+        // Closes back to Library — clear any Build-local statusMessage (e.g.
+        // an export toast for the just-deleted deck) so it can't reappear as
+        // stale feedback on the Library surface (#35 review).
+        set({
+          deck: null,
+          activeCardId: null,
+          workspaceMode: modeAfterCloseDeck(),
+          statusMessage: null
+        })
       }
       try {
         const result = await window.cuedeck.decks.remove(id)
@@ -535,7 +549,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
         void window.cuedeck.window.setPresenter(false)
       }
       saveCoordinator.reset()
-      set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
+      // Leaving a deck always returns to Library — clear any Build-local
+      // statusMessage so it can't reappear as stale feedback in Library
+      // (#35 review); mirrors the same clear in openDeck/createDeck/deleteDeck.
+      set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck(), statusMessage: null })
     },
 
     flushPendingSave: async () => {
