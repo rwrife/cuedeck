@@ -12,7 +12,16 @@
  */
 
 /** Every user-facing operation surface that can report a failure. */
-export type DeckOperation = 'create' | 'open' | 'save' | 'import' | 'export' | 'live'
+export type DeckOperation =
+  | 'create'
+  | 'open'
+  | 'save'
+  | 'import'
+  | 'export'
+  | 'live'
+  | 'rename'
+  | 'duplicate'
+  | 'delete'
 
 /** A structured, renderable failure for one operation surface. */
 export interface OperationError {

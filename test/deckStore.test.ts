@@ -37,7 +37,21 @@ function makeDeck(id = 'deck-1'): Deck {
 }
 
 const saveMock = vi.fn(async (d: Deck) => ({ ...d, updatedAt: 'saved' }))
-const removeMock = vi.fn(async () => {})
+const removeMock = vi.fn(async () => ({ ok: true }))
+const renameMock = vi.fn(async (id: string, name: string) => ({
+  ok: true,
+  summary: { id, name, filePath: `/decks/${id}.json`, cardCount: 0, updatedAt: 'renamed' }
+}))
+const duplicateMock = vi.fn(async (id: string) => ({
+  ok: true,
+  summary: {
+    id: `${id}-copy`,
+    name: 'Copy',
+    filePath: `/decks/${id}-copy.json`,
+    cardCount: 0,
+    updatedAt: 'duplicated'
+  }
+}))
 const listMock = vi.fn(async () => [])
 const setPresenterMock = vi.fn(async () => {})
 const loadMock = vi.fn(async (id: string) => makeDeck(id))
@@ -49,7 +63,21 @@ let useDeckStore: DeckStore
 beforeEach(async () => {
   vi.useFakeTimers()
   saveMock.mockReset().mockImplementation(async (d: Deck) => ({ ...d, updatedAt: 'saved' }))
-  removeMock.mockReset().mockResolvedValue(undefined)
+  removeMock.mockReset().mockResolvedValue({ ok: true })
+  renameMock.mockReset().mockImplementation(async (id: string, name: string) => ({
+    ok: true,
+    summary: { id, name, filePath: `/decks/${id}.json`, cardCount: 0, updatedAt: 'renamed' }
+  }))
+  duplicateMock.mockReset().mockImplementation(async (id: string) => ({
+    ok: true,
+    summary: {
+      id: `${id}-copy`,
+      name: 'Copy',
+      filePath: `/decks/${id}-copy.json`,
+      cardCount: 0,
+      updatedAt: 'duplicated'
+    }
+  }))
   listMock.mockReset().mockResolvedValue([])
   setPresenterMock.mockReset().mockResolvedValue(undefined)
   loadMock.mockReset().mockImplementation(async (id: string) => makeDeck(id))
@@ -60,6 +88,8 @@ beforeEach(async () => {
       decks: {
         save: (d: Deck) => saveMock(d),
         remove: (id: string) => removeMock(id),
+        rename: (id: string, name: string) => renameMock(id, name),
+        duplicate: (id: string) => duplicateMock(id),
         list: () => listMock(),
         load: (id: string) => loadMock(id),
         create: (name: string) => createMock(name)
@@ -216,5 +246,145 @@ describe('open/create flush the outgoing deck before switching (#33/#38)', () =>
     expect(saveMock.mock.calls[0][0].id).toBe('deck-1')
     expect(useDeckStore.getState().deck?.id).toBe('new-deck')
     expect(useDeckStore.getState().workspaceMode).toBe('build')
+  })
+})
+
+describe('guided New Demo → blank demo (#34)', () => {
+  it('seeds and focuses one first step on a fresh empty deck', async () => {
+    createMock.mockResolvedValueOnce(makeDeck('blank-1'))
+
+    await useDeckStore.getState().createBlankDemo('Blank Demo')
+
+    const state = useDeckStore.getState()
+    expect(state.deck?.cards).toHaveLength(1)
+    expect(state.activeCardId).toBe(state.deck?.cards[0]?.id)
+    expect(state.focusCardId).toBe(state.deck?.cards[0]?.id)
+    expect(state.workspaceMode).toBe('build')
+  })
+
+  it('does not seed a card when the underlying create fails', async () => {
+    createMock.mockRejectedValueOnce(new Error('disk full'))
+
+    await useDeckStore.getState().createBlankDemo('Blank Demo')
+
+    const state = useDeckStore.getState()
+    expect(state.deck).toBeNull()
+    expect(state.errors.create).toBeTruthy()
+  })
+})
+
+describe('guided New Demo → starter template (#34)', () => {
+  it('applies the starter template onto the freshly-created deck', async () => {
+    createMock.mockResolvedValueOnce(makeDeck('template-1'))
+
+    await useDeckStore.getState().createFromTemplate('My Demo')
+
+    const state = useDeckStore.getState()
+    expect(state.deck?.cards.length).toBeGreaterThan(0)
+    expect(state.activeCardId).toBe(state.deck?.cards[0]?.id)
+    expect(Object.keys(state.deck?.variables ?? {}).length).toBeGreaterThan(0)
+  })
+
+  it('does not apply the template when the underlying create fails', async () => {
+    createMock.mockRejectedValueOnce(new Error('disk full'))
+
+    await useDeckStore.getState().createFromTemplate('My Demo')
+
+    expect(useDeckStore.getState().deck).toBeNull()
+  })
+})
+
+describe('renameDeck (#34)', () => {
+  it('renames a deck and refreshes summaries', async () => {
+    await useDeckStore.getState().renameDeck('deck-9', 'New Name')
+
+    expect(renameMock).toHaveBeenCalledWith('deck-9', 'New Name')
+    expect(listMock).toHaveBeenCalled()
+    expect(useDeckStore.getState().statusMessage).toContain('New Name')
+    expect(useDeckStore.getState().statusTone).toBe('success')
+    expect(useDeckStore.getState().errors.rename).toBeUndefined()
+  })
+
+  it('keeps the currently-open deck\'s in-memory name in sync when renamed', async () => {
+    useDeckStore.setState({ deck: makeDeck('deck-9'), workspaceMode: 'build' })
+
+    await useDeckStore.getState().renameDeck('deck-9', 'New Name')
+
+    expect(useDeckStore.getState().deck?.name).toBe('New Name')
+  })
+
+  it('surfaces a typed error and does not silently succeed on failure', async () => {
+    renameMock.mockResolvedValueOnce({ ok: false, error: 'Deck not found.' })
+
+    await useDeckStore.getState().renameDeck('missing', 'New Name')
+
+    const state = useDeckStore.getState()
+    expect(state.errors.rename?.message).toBe('Deck not found.')
+    expect(state.statusMessage).toContain('Deck not found.')
+    expect(state.statusTone).toBe('danger')
+  })
+})
+
+describe('duplicateDeck (#34)', () => {
+  it('duplicates a deck and refreshes summaries', async () => {
+    await useDeckStore.getState().duplicateDeck('deck-9')
+
+    expect(duplicateMock).toHaveBeenCalledWith('deck-9')
+    expect(listMock).toHaveBeenCalled()
+    expect(useDeckStore.getState().statusMessage).toContain('Duplicated')
+    expect(useDeckStore.getState().statusTone).toBe('success')
+    expect(useDeckStore.getState().errors.duplicate).toBeUndefined()
+  })
+
+  it('surfaces a typed error and does not silently succeed on failure', async () => {
+    duplicateMock.mockResolvedValueOnce({ ok: false, error: 'Deck not found.' })
+
+    await useDeckStore.getState().duplicateDeck('missing')
+
+    const state = useDeckStore.getState()
+    expect(state.errors.duplicate?.message).toBe('Deck not found.')
+    expect(state.statusMessage).toContain('Deck not found.')
+    expect(state.statusTone).toBe('danger')
+  })
+})
+
+describe('deleteDeck surfaces typed result feedback (#34)', () => {
+  it('surfaces a success status message on a normal delete', async () => {
+    await useDeckStore.getState().deleteDeck('deck-9')
+
+    expect(useDeckStore.getState().statusMessage).toBe('Deck deleted.')
+    expect(useDeckStore.getState().statusTone).toBe('success')
+    expect(useDeckStore.getState().errors.delete).toBeUndefined()
+  })
+
+  it('surfaces a typed error instead of silently succeeding when the file could not be removed', async () => {
+    removeMock.mockResolvedValueOnce({ ok: false, error: 'Permission denied.' })
+
+    await useDeckStore.getState().deleteDeck('deck-9')
+
+    const state = useDeckStore.getState()
+    expect(state.errors.delete?.message).toBe('Permission denied.')
+    expect(state.statusMessage).toContain('Permission denied.')
+    expect(state.statusTone).toBe('danger')
+  })
+})
+
+describe('addCard sets a focus request (#34/Accessibility)', () => {
+  it('marks the newly created card for focus', () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+
+    useDeckStore.getState().addCard()
+
+    const state = useDeckStore.getState()
+    expect(state.focusCardId).toBe(state.activeCardId)
+  })
+
+  it('clearFocusCard consumes the pending request', () => {
+    useDeckStore.setState({ deck: makeDeck('deck-1'), workspaceMode: 'build' })
+    useDeckStore.getState().addCard()
+
+    useDeckStore.getState().clearFocusCard()
+
+    expect(useDeckStore.getState().focusCardId).toBeNull()
   })
 })

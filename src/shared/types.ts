@@ -98,6 +98,33 @@ export interface ImportResult {
 }
 
 /**
+ * Result of a deck rename attempt (#34). Renaming never involves a native
+ * dialog, so unlike {@link ExportResult}/{@link ImportResult} there is no
+ * "cancelled" case — `ok: false` always carries a human-readable `error`.
+ */
+export interface RenameResult {
+  ok: boolean
+  /** The renamed deck's updated summary (present when ok). */
+  summary?: DeckSummary
+  error?: string
+}
+
+/** Result of a deck duplicate attempt (#34): a new, re-id'd copy of the deck. */
+export interface DuplicateResult {
+  ok: boolean
+  /** The new copy's summary (present when ok). */
+  summary?: DeckSummary
+  error?: string
+}
+
+/** Result of a deck delete attempt (#34), surfaced instead of a bare boolean
+ *  so a failure (e.g. a locked/missing file) is never silently swallowed. */
+export interface DeleteResult {
+  ok: boolean
+  error?: string
+}
+
+/**
  * The current deck schema version emitted by this build.
  *
  * - v1: original deck model (no variables).

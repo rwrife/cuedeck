@@ -221,3 +221,84 @@ export function RehearseIcon(props: IconProps): JSX.Element {
     </Icon>
   )
 }
+
+/** Library (#34): the deck-level overflow menu trigger ("more actions"). */
+export function MoreVerticalIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </Icon>
+  )
+}
+
+/** Library (#34): rename. */
+export function EditIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+    </Icon>
+  )
+}
+
+/** Library (#34): duplicate. */
+export function CopyIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="9" width="12" height="12" rx="1.5" />
+      <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+    </Icon>
+  )
+}
+
+/** Library (#34): export to a .json file. */
+export function DownloadIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M4 21h16" />
+    </Icon>
+  )
+}
+
+/** Library (#34): import from a .json file. */
+export function UploadIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M12 21V9" />
+      <path d="M7 14l5-5 5 5" />
+      <path d="M4 3h16" />
+    </Icon>
+  )
+}
+
+/** Library (#34): a blank/new file. */
+export function FileIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+    </Icon>
+  )
+}
+
+/** Library (#34): the guided starter-template choice. */
+export function SparklesIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" />
+    </Icon>
+  )
+}
+
+/** Library (#34): "New Demo" primary action. */
+export function PlusIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  )
+}

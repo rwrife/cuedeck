@@ -12,6 +12,7 @@ import {
   getNextSegmentIndex,
   isSegmentedNavKey
 } from '../src/renderer/src/lib/ui/segmentedControlNav'
+import { getNextMenuIndex, isMenuNavKey } from '../src/renderer/src/lib/ui/menuNav'
 
 describe('ui: cx (className merge)', () => {
   it('joins truthy class names with a single space', () => {
@@ -181,5 +182,28 @@ describe('ui: segmented control keyboard navigation helpers', () => {
 
   it('returns null when every option is disabled', () => {
     expect(getNextSegmentIndex('ArrowRight', 0, 3, () => true)).toBeNull()
+  })
+})
+
+describe('ui: menu keyboard navigation helpers (#34 Library overflow menu)', () => {
+  it('recognizes the menu navigation keys', () => {
+    expect(isMenuNavKey('ArrowDown')).toBe(true)
+    expect(isMenuNavKey('ArrowUp')).toBe(true)
+    expect(isMenuNavKey('Enter')).toBe(false)
+    expect(isMenuNavKey('Escape')).toBe(false)
+  })
+
+  it('moves down to the next index and wraps at the end', () => {
+    expect(getNextMenuIndex('ArrowDown', 0, 3)).toBe(1)
+    expect(getNextMenuIndex('ArrowDown', 2, 3)).toBe(0)
+  })
+
+  it('moves up to the previous index and wraps at the start', () => {
+    expect(getNextMenuIndex('ArrowUp', 0, 3)).toBe(2)
+    expect(getNextMenuIndex('ArrowUp', 2, 3)).toBe(1)
+  })
+
+  it('returns null for an empty menu', () => {
+    expect(getNextMenuIndex('ArrowDown', -1, 0)).toBeNull()
   })
 })

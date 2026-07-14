@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { primaryActionMode, type WorkspaceMode } from '@shared/workspace'
 import { ModeRail } from './ModeRail'
-import { DeckPicker } from './DeckPicker'
+import { Library } from './Library'
 import { DeckWorkspace } from './DeckWorkspace'
 import { RehearsePlaceholder } from './RehearsePlaceholder'
 import { OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
@@ -196,7 +196,7 @@ export function StudioShell(): JSX.Element {
 
       {/* Active mode content */}
       <div className="flex min-h-0 flex-1 flex-col">
-        {workspaceMode === 'library' && <DeckPicker />}
+        {workspaceMode === 'library' && <Library />}
         {workspaceMode === 'build' && deck && <DeckWorkspace />}
         {workspaceMode === 'rehearse' && deck && <RehearsePlaceholder />}
       </div>

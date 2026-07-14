@@ -6,10 +6,14 @@ import {
   CURRENT_SCHEMA_VERSION,
   type Deck,
   type DeckSummary,
+  type DeleteResult,
+  type DuplicateResult,
   type ExportResult,
-  type ImportResult
+  type ImportResult,
+  type RenameResult
 } from '../shared/types'
 import { createEmptyDeck, generateId, normalizeDeck, validateDeck } from '../shared/deck'
+import { deleteDeckInDir, duplicateDeckInDir, renameDeckInDir } from './deckLibraryOps'
 
 /**
  * Deck persistence layer. Decks are stored as individual JSON files under
@@ -117,13 +121,23 @@ export function registerDeckHandlers(): void {
     return deck
   })
 
-  ipcMain.handle(IPC.deckDelete, async (_evt, id: string): Promise<boolean> => {
-    try {
-      await fs.unlink(deckPath(id))
-      return true
-    } catch {
-      return false
-    }
+  ipcMain.handle(IPC.deckDelete, async (_evt, id: string): Promise<DeleteResult> => {
+    await ensureDir()
+    return deleteDeckInDir(decksDir(), id)
+  })
+
+  // Rename a deck in place (#34): validates the new name and rewrites the
+  // file with an updated `name` + `updatedAt`.
+  ipcMain.handle(IPC.deckRename, async (_evt, id: string, name: string): Promise<RenameResult> => {
+    await ensureDir()
+    return renameDeckInDir(decksDir(), id, name)
+  })
+
+  // Duplicate a deck (#34): copies its full contents into a freshly-id'd file
+  // with a non-colliding "<name> copy" name.
+  ipcMain.handle(IPC.deckDuplicate, async (_evt, id: string): Promise<DuplicateResult> => {
+    await ensureDir()
+    return duplicateDeckInDir(decksDir(), id)
   })
 
   // Export a deck to an arbitrary .json file via a native save dialog.

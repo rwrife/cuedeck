@@ -14,6 +14,9 @@ export const IPC = {
   deckDelete: 'deck:delete',
   deckExport: 'deck:export',
   deckImport: 'deck:import',
+  // Library-local deck lifecycle actions (#34)
+  deckRename: 'deck:rename',
+  deckDuplicate: 'deck:duplicate',
 
   // Window / presenter mode
   toggleAlwaysOnTop: 'window:toggleAlwaysOnTop',

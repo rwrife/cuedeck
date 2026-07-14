@@ -134,7 +134,7 @@ src/
 │   └── src/
 │       ├── App.tsx
 │       ├── main.tsx
-│       ├── components/     # DeckPicker, DeckWorkspace, CardList, CardEditor, SnippetButton
+│       ├── components/     # Library, DeckWorkspace, CardList, CardEditor, SnippetButton
 │       ├── store/          # Zustand store w/ debounced auto-save
 │       └── styles/
 ├── shared/         # types + IPC channels + deck validator/normalizer (both sides)

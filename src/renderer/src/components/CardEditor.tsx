@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { SnippetButton } from './SnippetButton'
 import { MarkdownNotes } from './MarkdownNotes'
@@ -19,8 +19,22 @@ export function CardEditor(): JSX.Element {
   const removeCard = useDeckStore((s) => s.removeCard)
   const addSnippet = useDeckStore((s) => s.addSnippet)
   const reorderSnippets = useDeckStore((s) => s.reorderSnippets)
+  const focusCardId = useDeckStore((s) => s.focusCardId)
+  const clearFocusCard = useDeckStore((s) => s.clearFocusCard)
 
   const card = deck.cards.find((c) => c.id === activeCardId)
+  const titleRef = useRef<HTMLInputElement | null>(null)
+
+  // Focus a newly created card's title instead of an inert empty editor
+  // (#34 Accessibility: "focus moves to newly created content") — covers both
+  // an ordinary "+ Card" and the guided New Demo blank/starter-template flows,
+  // whose first step also sets this one-shot request.
+  useEffect(() => {
+    if (card && focusCardId === card.id) {
+      titleRef.current?.focus()
+      clearFocusCard()
+    }
+  }, [card, focusCardId, clearFocusCard])
 
   // Notes editor sub-mode: raw Markdown "Write" vs rendered "Preview" (#6).
   const [notesPreview, setNotesPreview] = useState(false)
@@ -43,6 +57,7 @@ export function CardEditor(): JSX.Element {
       {/* Title + delete */}
       <div className="flex items-center gap-3">
         <input
+          ref={titleRef}
           value={card.title}
           onChange={(e) => updateCard(card.id, { title: e.target.value })}
           placeholder="Card title…"

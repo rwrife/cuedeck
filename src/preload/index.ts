@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { Deck, DeckSummary, ExportResult, ImportResult } from '../shared/types'
+import type {
+  Deck,
+  DeckSummary,
+  DeleteResult,
+  DuplicateResult,
+  ExportResult,
+  ImportResult,
+  RenameResult
+} from '../shared/types'
 import type { Settings } from '../shared/settings'
 import type { LiveState } from '../shared/liveControl'
 
@@ -57,9 +65,14 @@ const api = {
     load: (id: string): Promise<Deck | null> => ipcRenderer.invoke(IPC.deckLoad, id),
     save: (deck: Deck): Promise<Deck> => ipcRenderer.invoke(IPC.deckSave, deck),
     create: (name: string): Promise<Deck> => ipcRenderer.invoke(IPC.deckCreate, name),
-    remove: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.deckDelete, id),
+    remove: (id: string): Promise<DeleteResult> => ipcRenderer.invoke(IPC.deckDelete, id),
     export: (id: string): Promise<ExportResult> => ipcRenderer.invoke(IPC.deckExport, id),
-    import: (): Promise<ImportResult> => ipcRenderer.invoke(IPC.deckImport)
+    import: (): Promise<ImportResult> => ipcRenderer.invoke(IPC.deckImport),
+    /** Rename a deck in place (#34); never a native dialog, so always ok/error. */
+    rename: (id: string, name: string): Promise<RenameResult> =>
+      ipcRenderer.invoke(IPC.deckRename, id, name),
+    /** Duplicate a deck (#34), producing a new, independently-named copy. */
+    duplicate: (id: string): Promise<DuplicateResult> => ipcRenderer.invoke(IPC.deckDuplicate, id)
   },
   window: {
     toggleAlwaysOnTop: (): Promise<boolean> => ipcRenderer.invoke(IPC.toggleAlwaysOnTop),

@@ -13,6 +13,7 @@ import {
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
+import { applyStarterTemplate } from '@shared/library'
 import {
   errorMessageOf,
   makeOperationError,
@@ -76,12 +77,51 @@ interface DeckState {
   lastCopiedSnippetId: string | null
   /** Transient message surfaced to the user (import/export errors or confirmations). */
   statusMessage: string | null
+  /** Tone for {@link statusMessage} — drives which `StatusBanner` variant renders it. */
+  statusTone: StatusTone
+  /**
+   * Id of a card that should receive DOM focus the next time it renders
+   * (#34): set whenever a new card is created (including the guided New
+   * Demo blank-deck flow's seeded first step) so Build can land the user's
+   * cursor there instead of an inert, unfocused editor. Consumed (cleared)
+   * by the component that performs the focus.
+   */
+  focusCardId: string | null
 
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
   openDeck: (id: string) => Promise<void>
   createDeck: (name: string) => Promise<void>
+  /**
+   * Guided New Demo → "Blank demo" (#34): create an empty deck, then seed
+   * and focus one first step so Build never opens on an inert empty editor.
+   * A no-op seed step if `createDeck` itself failed (surfaced via the
+   * existing `create` operation error).
+   */
+  createBlankDemo: (name: string) => Promise<void>
+  /**
+   * Guided New Demo → "Starter template" (#34): create an empty deck, then
+   * apply the small, pure {@link applyStarterTemplate} sample so the user
+   * lands on a useful, already-populated demo instead of a blank one. Does
+   * not alter the persisted deck schema — the result is an ordinary deck.
+   */
+  createFromTemplate: (name: string) => Promise<void>
   deleteDeck: (id: string) => Promise<void>
+  /**
+   * Rename a deck in place (#34). Works on any deck in the Library, not just
+   * the currently-open one; keeps the open deck's in-memory name in sync
+   * when it's the one being renamed. Explicit success/failure feedback via
+   * `statusMessage` and the `'rename'` operation error — never a silent
+   * no-op.
+   */
+  renameDeck: (id: string, name: string) => Promise<void>
+  /**
+   * Duplicate a deck (#34): the copy gets a fresh id and a non-colliding
+   * "<name> copy" name (assigned by the main process) and appears in the
+   * Library immediately. Explicit success/failure feedback, matching
+   * {@link renameDeck}.
+   */
+  duplicateDeck: (id: string) => Promise<void>
   closeDeck: () => Promise<void>
 
   // Persistence control (#38)
@@ -97,7 +137,7 @@ interface DeckState {
   // Import / export
   exportDeck: (id: string) => Promise<void>
   importDeck: () => Promise<void>
-  setStatusMessage: (message: string | null) => void
+  setStatusMessage: (message: string | null, tone?: StatusTone) => void
   /** Record a structured failure for an operation surface (#38). */
   setOperationError: (operation: DeckOperation, message: string) => void
   /** Clear a previously-recorded operation failure. */
@@ -135,6 +175,8 @@ interface DeckState {
   stepActiveCard: (step: -1 | 1) => void
   /** Move a card from one position to another in the running order. */
   reorderCards: (fromIndex: number, toIndex: number) => void
+  /** Consume the pending {@link focusCardId} request (called once focus is applied). */
+  clearFocusCard: () => void
 
   // Clipboard
   /**
@@ -194,6 +236,13 @@ export const COPY_FLASH_MS = 1200
 
 /** Debounce window (ms) before a quiescent edit is persisted. */
 export const SAVE_DEBOUNCE_MS = 500
+
+/**
+ * Tone for the transient {@link DeckState.statusMessage} (#34 Feedback and
+ * Error Handling): lets Library render the shared `StatusBanner` with the
+ * right color/icon instead of every failure looking identical to a success.
+ */
+export type StatusTone = 'neutral' | 'success' | 'danger'
 
 export const useDeckStore = create<DeckState>((set, get) => {
   /**
@@ -265,6 +314,8 @@ export const useDeckStore = create<DeckState>((set, get) => {
     workspaceMode: 'library',
     lastCopiedSnippetId: null,
     statusMessage: null,
+    statusTone: 'neutral',
+    focusCardId: null,
 
     refreshSummaries: async () => {
       const summaries = await window.cuedeck.decks.list()
@@ -327,6 +378,30 @@ export const useDeckStore = create<DeckState>((set, get) => {
       }
     },
 
+    createBlankDemo: async (name) => {
+      await get().createDeck(name)
+      const { deck, errors } = get()
+      // Only seed a first step when creation actually succeeded — a `create`
+      // failure leaves `deck` as whatever was open before (or null), and must
+      // not be mistaken for a fresh, seedable deck.
+      if (deck && !errors.create && deck.cards.length === 0) {
+        get().addCard()
+      }
+    },
+
+    createFromTemplate: async (name) => {
+      await get().createDeck(name)
+      const { deck, errors } = get()
+      if (deck && !errors.create) {
+        mutate((d) => applyStarterTemplate(d))
+        const templated = get().deck
+        set({
+          activeCardId: templated?.cards[0]?.id ?? null,
+          focusCardId: templated?.cards[0]?.id ?? null
+        })
+      }
+    },
+
     deleteDeck: async (id) => {
       const { deck, workspaceMode } = get()
       if (deck?.id === id) {
@@ -341,8 +416,68 @@ export const useDeckStore = create<DeckState>((set, get) => {
         if (workspaceMode === 'present') void window.cuedeck.window.setPresenter(false)
         set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
       }
-      await window.cuedeck.decks.remove(id)
+      try {
+        const result = await window.cuedeck.decks.remove(id)
+        if (result.ok) {
+          get().clearOperationError('delete')
+          set({ statusMessage: 'Deck deleted.', statusTone: 'success' })
+        } else {
+          const message = result.error ?? 'Could not delete this deck.'
+          get().setOperationError('delete', message)
+          set({ statusMessage: `Delete failed: ${message}`, statusTone: 'danger' })
+        }
+      } catch (err) {
+        const message = errorMessageOf(err)
+        get().setOperationError('delete', message)
+        set({ statusMessage: `Delete failed: ${message}`, statusTone: 'danger' })
+      }
+      // Refresh regardless of outcome: on success the deck is gone; on
+      // failure the file is still on disk, so the deck correctly reappears
+      // instead of the Library silently pretending it was removed.
       await get().refreshSummaries()
+    },
+
+    renameDeck: async (id, name) => {
+      try {
+        const result = await window.cuedeck.decks.rename(id, name)
+        if (result.ok && result.summary) {
+          get().clearOperationError('rename')
+          // Keep the open deck's in-memory name in sync if it's the one
+          // being renamed, so the Build header reflects it immediately.
+          set((s) =>
+            s.deck?.id === id ? { deck: { ...s.deck, name: result.summary!.name } } : {}
+          )
+          await get().refreshSummaries()
+          set({ statusMessage: `Renamed to “${result.summary.name}”.`, statusTone: 'success' })
+        } else {
+          const message = result.error ?? 'Could not rename this deck.'
+          get().setOperationError('rename', message)
+          set({ statusMessage: `Rename failed: ${message}`, statusTone: 'danger' })
+        }
+      } catch (err) {
+        const message = errorMessageOf(err)
+        get().setOperationError('rename', message)
+        set({ statusMessage: `Rename failed: ${message}`, statusTone: 'danger' })
+      }
+    },
+
+    duplicateDeck: async (id) => {
+      try {
+        const result = await window.cuedeck.decks.duplicate(id)
+        if (result.ok && result.summary) {
+          get().clearOperationError('duplicate')
+          await get().refreshSummaries()
+          set({ statusMessage: `Duplicated as “${result.summary.name}”.`, statusTone: 'success' })
+        } else {
+          const message = result.error ?? 'Could not duplicate this deck.'
+          get().setOperationError('duplicate', message)
+          set({ statusMessage: `Duplicate failed: ${message}`, statusTone: 'danger' })
+        }
+      } catch (err) {
+        const message = errorMessageOf(err)
+        get().setOperationError('duplicate', message)
+        set({ statusMessage: `Duplicate failed: ${message}`, statusTone: 'danger' })
+      }
     },
 
     closeDeck: async () => {
@@ -373,16 +508,16 @@ export const useDeckStore = create<DeckState>((set, get) => {
         const result = await window.cuedeck.decks.export(id)
         if (result.error) {
           get().setOperationError('export', result.error)
-          set({ statusMessage: `Export failed: ${result.error}` })
+          set({ statusMessage: `Export failed: ${result.error}`, statusTone: 'danger' })
         } else if (result.ok && result.filePath) {
           get().clearOperationError('export')
-          set({ statusMessage: `Exported to ${result.filePath}` })
+          set({ statusMessage: `Exported to ${result.filePath}`, statusTone: 'success' })
         }
         // Silent, neutral no-op when the user simply cancelled the dialog.
       } catch (err) {
         const message = errorMessageOf(err)
         get().setOperationError('export', message)
-        set({ statusMessage: `Export failed: ${message}` })
+        set({ statusMessage: `Export failed: ${message}`, statusTone: 'danger' })
       }
     },
 
@@ -391,23 +526,23 @@ export const useDeckStore = create<DeckState>((set, get) => {
         const result = await window.cuedeck.decks.import()
         if (result.error) {
           get().setOperationError('import', result.error)
-          set({ statusMessage: `Import failed: ${result.error}` })
+          set({ statusMessage: `Import failed: ${result.error}`, statusTone: 'danger' })
           return
         }
         if (result.ok && result.summary) {
           await get().refreshSummaries()
           get().clearOperationError('import')
-          set({ statusMessage: `Imported “${result.summary.name}”.` })
+          set({ statusMessage: `Imported “${result.summary.name}”.`, statusTone: 'success' })
         }
         // Silent, neutral no-op when the user cancelled the dialog.
       } catch (err) {
         const message = errorMessageOf(err)
         get().setOperationError('import', message)
-        set({ statusMessage: `Import failed: ${message}` })
+        set({ statusMessage: `Import failed: ${message}`, statusTone: 'danger' })
       }
     },
 
-    setStatusMessage: (message) => set({ statusMessage: message }),
+    setStatusMessage: (message, tone = 'neutral') => set({ statusMessage: message, statusTone: tone }),
 
     setOperationError: (operation, message) =>
       set((s) => ({
@@ -459,7 +594,9 @@ export const useDeckStore = create<DeckState>((set, get) => {
     addCard: () => {
       const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }
       mutate((d) => ({ ...d, cards: [...d.cards, card] }))
-      set({ activeCardId: card.id })
+      // Focus the new card immediately (#34/Accessibility: focus moves to
+      // newly created content) rather than leaving the user to hunt for it.
+      set({ activeCardId: card.id, focusCardId: card.id })
     },
 
     updateCard: (cardId, patch) =>
@@ -491,6 +628,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
         const cards = move(d.cards, fromIndex, toIndex)
         return cards === d.cards ? d : { ...d, cards }
       }),
+
+    clearFocusCard: () => {
+      if (get().focusCardId !== null) set({ focusCardId: null })
+    },
 
     copySnippet: async (cardId, snippetId) => {
       const { deck } = get()
