@@ -10,6 +10,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { SettingsModal } from './components/SettingsModal'
 import { LiveControlPanel } from './components/LiveControlPanel'
 import { BuildAdvancedPanel } from './components/BuildAdvancedPanel'
+import { UndoToast } from './components/UndoToast'
 import { initLiveControlBridge } from './liveControlClient'
 
 /**
@@ -77,6 +78,9 @@ export default function App(): JSX.Element {
       <SettingsModal />
       <LiveControlPanel />
       <BuildAdvancedPanel />
+      {/* Undo toast for reversible deletions (step/content/variable), available
+          wherever a deck is open (#38). */}
+      {deck && <UndoToast />}
       {/* Quick-search / command palette overlay (/ or Ctrl/Cmd+K), available
           in Build and Rehearse — not shown over the compact Present surface. */}
       {deck && workspaceMode !== 'present' && <CommandPalette />}

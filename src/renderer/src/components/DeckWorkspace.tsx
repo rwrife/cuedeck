@@ -28,6 +28,7 @@ export function DeckWorkspace(): JSX.Element {
   const saveError = useDeckStore((s) => s.saveError)
   const retrySave = useDeckStore((s) => s.retrySave)
   const statusMessage = useDeckStore((s) => s.statusMessage)
+  const statusTone = useDeckStore((s) => s.statusTone)
   const setStatusMessage = useDeckStore((s) => s.setStatusMessage)
 
   // Adding a step arms the store's one-shot focus request (focusCardId) and
@@ -42,7 +43,7 @@ export function DeckWorkspace(): JSX.Element {
       {/* Save failures must be visible where they occur, not just as a header
           label (#38) — offer an immediate retry right here in Build. */}
       {saveStatus === 'error' && saveError && (
-        <StatusBanner tone="danger" className="mx-4 mt-3">
+        <StatusBanner tone="danger" assertive className="mx-4 mt-3">
           <span className="flex flex-wrap items-center gap-2">
             <span>Save failed: {saveError.message}</span>
             <Button variant="secondary" size="sm" onClick={() => void retrySave()}>
@@ -55,7 +56,7 @@ export function DeckWorkspace(): JSX.Element {
           otherwise only be visible on the Library picker. */}
       {statusMessage && (
         <StatusBanner
-          tone="neutral"
+          tone={statusTone}
           onDismiss={() => setStatusMessage(null)}
           className="mx-4 mt-3"
         >

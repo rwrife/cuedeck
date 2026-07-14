@@ -3,6 +3,7 @@ import { Dialog } from './ui/Dialog'
 import { Toggle } from './ui/Toggle'
 import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
+import { StatusBanner } from './ui/StatusBanner'
 import { CheckIcon, CloseIcon, SlidersIcon } from './ui/icons'
 import { useDeckStore } from '../store/deckStore'
 import { errorMessageOf } from '@shared/operations'
@@ -118,6 +119,11 @@ export function LiveControlPanel(): JSX.Element | null {
   const [status, setStatus] = useState<LiveControlStatus>({ enabled: false, descriptor: null })
   const [busy, setBusy] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  // Live-control failures are stored as a structured operation error (#38);
+  // surface it right here in the panel where the action occurred, instead of
+  // letting it live only in store state.
+  const liveError = useDeckStore((s) => s.errors.live)
+  const clearOperationError = useDeckStore((s) => s.clearOperationError)
 
   const refresh = useCallback(async () => {
     const next = await window.cuedeck.live.getStatus()
@@ -186,6 +192,12 @@ export function LiveControlPanel(): JSX.Element | null {
 
       {/* Body */}
       <div className="space-y-4 px-5 py-4">
+        {/* Live-control failures must be visible where the action occurred (#38). */}
+        {liveError && (
+          <StatusBanner tone="danger" assertive onDismiss={() => clearOperationError('live')}>
+            {liveError.message}
+          </StatusBanner>
+        )}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="font-medium text-deck-text">Allow live control</div>

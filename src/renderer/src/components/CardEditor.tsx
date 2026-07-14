@@ -43,6 +43,8 @@ export function CardEditor({ onAddCard }: Props): JSX.Element {
   const reorderSnippets = useDeckStore((s) => s.reorderSnippets)
   const focusCardId = useDeckStore((s) => s.focusCardId)
   const clearFocusCard = useDeckStore((s) => s.clearFocusCard)
+  const focusSnippetId = useDeckStore((s) => s.focusSnippetId)
+  const clearFocusSnippet = useDeckStore((s) => s.clearFocusSnippet)
 
   const cardIndex = deck.cards.findIndex((c) => c.id === activeCardId)
   const card = cardIndex >= 0 ? deck.cards[cardIndex] : undefined
@@ -71,6 +73,17 @@ export function CardEditor({ onAddCard }: Props): JSX.Element {
       clearFocusCard()
     }
   }, [card, focusCardId, clearFocusCard])
+
+  // Consume a one-shot request to focus a specific piece of paste-ready content
+  // (#38): set when a deleted snippet is restored via undo, so focus lands back
+  // on the recovered item — a predictable focus target after a destructive
+  // action. Routed through the same pendingFocus mechanism new content uses.
+  useEffect(() => {
+    if (focusSnippetId && card?.snippets.some((s) => s.id === focusSnippetId)) {
+      setPendingFocusSnippetId(focusSnippetId)
+      clearFocusSnippet()
+    }
+  }, [focusSnippetId, card, clearFocusSnippet])
 
   if (!card) {
     return (

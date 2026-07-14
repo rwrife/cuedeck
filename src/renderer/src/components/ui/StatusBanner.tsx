@@ -9,6 +9,12 @@ export interface StatusBannerProps {
   children: ReactNode
   onDismiss?: () => void
   className?: string
+  /**
+   * When true, announce as an assertive `role="alert"` region rather than the
+   * default polite `role="status"`. Use for failures the user must notice
+   * immediately (e.g. a failed save), not for routine confirmations.
+   */
+  assertive?: boolean
 }
 
 const TONE_ICON: Partial<Record<Tone, ReactNode>> = {
@@ -22,14 +28,21 @@ const TONE_ICON: Partial<Record<Tone, ReactNode>> = {
  * success/warning/danger/info/neutral surface for save state, import/export
  * results, and other feedback that must be visible where the action
  * happened (rather than color-only — each tone also gets a distinct icon).
- * `role="status"` + `aria-live="polite"` so screen readers announce changes
- * without stealing focus.
+ * Defaults to `role="status"` + `aria-live="polite"` so screen readers announce
+ * changes without stealing focus; pass `assertive` for urgent failures that
+ * should interrupt as `role="alert"` + `aria-live="assertive"` (#38).
  */
-export function StatusBanner({ tone, children, onDismiss, className }: StatusBannerProps): JSX.Element {
+export function StatusBanner({
+  tone,
+  children,
+  onDismiss,
+  className,
+  assertive = false
+}: StatusBannerProps): JSX.Element {
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={assertive ? 'alert' : 'status'}
+      aria-live={assertive ? 'assertive' : 'polite'}
       className={cx(
         'flex items-start justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm',
         toneClasses(tone),

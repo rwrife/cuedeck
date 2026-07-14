@@ -13,6 +13,7 @@ import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import { KeyboardHint } from './ui/KeyboardHint'
 import { PageHeader } from './ui/PageHeader'
+import { Dialog } from './ui/Dialog'
 import { saveStatusLabel } from '../lib/ui/saveStatusLabel'
 import {
   ClapperboardIcon,
@@ -55,6 +56,11 @@ export function StudioShell(): JSX.Element {
   const exportDeck = useDeckStore((s) => s.exportDeck)
   const selectWorkspaceMode = useDeckStore((s) => s.selectWorkspaceMode)
   const enterPresent = useDeckStore((s) => s.enterPresent)
+  const closeBlocked = useDeckStore((s) => s.closeBlocked)
+  const saveError = useDeckStore((s) => s.saveError)
+  const retrySave = useDeckStore((s) => s.retrySave)
+  const discardAndClose = useDeckStore((s) => s.discardAndClose)
+  const dismissCloseBlocked = useDeckStore((s) => s.dismissCloseBlocked)
 
   const [pinned, setPinned] = useState(false)
   const [liveActive, setLiveActive] = useState(false)
@@ -106,6 +112,16 @@ export function StudioShell(): JSX.Element {
       void enterPresent()
     } else if (primaryTarget) {
       selectWorkspaceMode(primaryTarget)
+    }
+  }
+
+  // Retry the failed save, then close only if it actually succeeded (#38). A
+  // still-failing save re-flags the block, so the recovery prompt stays up
+  // rather than pretending the deck closed cleanly.
+  async function retryAndClose(): Promise<void> {
+    await retrySave()
+    if (useDeckStore.getState().saveStatus !== 'error') {
+      await closeDeck()
     }
   }
 
@@ -234,6 +250,34 @@ export function StudioShell(): JSX.Element {
         {workspaceMode === 'build' && deck && <DeckWorkspace />}
         {workspaceMode === 'rehearse' && deck && <RehearseView />}
       </div>
+
+      {/* Save-blocked close recovery (#38): the deck couldn't be saved, so it
+          wasn't closed. Make the authority explicit — retry, or knowingly
+          discard the unsaved changes — instead of a silent no-op or pretending
+          the data was saved. */}
+      <Dialog open={closeBlocked} onClose={dismissCloseBlocked} labelledBy="close-blocked-title">
+        <div className="px-5 py-4">
+          <h2 id="close-blocked-title" className="text-lg font-semibold text-deck-text">
+            Couldn&rsquo;t save your changes
+          </h2>
+          <p className="mt-2 text-sm text-deck-muted">
+            The deck wasn&rsquo;t closed because your latest changes couldn&rsquo;t be saved
+            {saveError ? <> ({saveError.message})</> : null}. Retry the save, or discard the
+            unsaved changes and close anyway.
+          </p>
+        </div>
+        <footer className="flex flex-wrap justify-end gap-2 border-t border-deck-border px-5 py-3">
+          <Button variant="ghost" onClick={dismissCloseBlocked}>
+            Keep editing
+          </Button>
+          <Button variant="danger" onClick={() => void discardAndClose()}>
+            Discard &amp; close
+          </Button>
+          <Button variant="primary" onClick={() => void retryAndClose()}>
+            Retry save
+          </Button>
+        </footer>
+      </Dialog>
     </div>
   )
 }

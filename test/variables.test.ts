@@ -6,7 +6,8 @@ import {
   collectReferencedVariables,
   extractVariableNames,
   hasVariables,
-  renderSnippet
+  renderSnippet,
+  validateVariableName
 } from '../src/shared/variables'
 
 /**
@@ -150,5 +151,44 @@ describe('VARIABLE_NAME_PATTERN', () => {
     for (const bad of ['', 'a b', 'a/b', 'a:b', '{{x}}']) {
       expect(VARIABLE_NAME_PATTERN.test(bad)).toBe(false)
     }
+  })
+})
+
+describe('validateVariableName (#38 inline guidance)', () => {
+  it('accepts a valid new name and returns it trimmed', () => {
+    expect(validateVariableName('  email  ', ['other'])).toEqual({ ok: true, name: 'email' })
+  })
+
+  it('rejects a blank name with actionable guidance', () => {
+    const result = validateVariableName('   ', [])
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/name/i)
+  })
+
+  it('rejects names with spaces or illegal characters (must be referenceable)', () => {
+    for (const bad of ['a b', 'a/b', 'a:b']) {
+      const result = validateVariableName(bad, [])
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toMatch(/letters/i)
+    }
+  })
+
+  it('rejects a collision with an already-defined name', () => {
+    const result = validateVariableName('email', ['email', 'customer'])
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('already exists')
+  })
+
+  it('allows re-committing the same name being renamed (current is excluded from collision)', () => {
+    expect(validateVariableName('email', ['email', 'customer'], { current: 'email' })).toEqual({
+      ok: true,
+      name: 'email'
+    })
+  })
+
+  it('still rejects renaming onto a different existing key', () => {
+    const result = validateVariableName('customer', ['email', 'customer'], { current: 'email' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('already exists')
   })
 })

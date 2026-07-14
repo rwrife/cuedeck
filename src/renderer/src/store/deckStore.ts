@@ -96,6 +96,30 @@ interface DeckState {
    * `VariablesPanel`.
    */
   focusVariablesPanel: boolean
+  /**
+   * One-shot focus request for a piece of paste-ready content (#38): set when a
+   * deleted snippet is restored via undo so its `SnippetButton` can focus its
+   * label the instant it re-renders. Consumed (cleared) by the component.
+   */
+  focusSnippetId: string | null
+  /**
+   * One-shot focus request for a deck variable (#38): set when a deleted
+   * variable is restored via undo so the Variables panel opens and focuses its
+   * name input. Consumed (cleared) by the component.
+   */
+  focusVariableName: string | null
+  /**
+   * The most recent undoable destructive edit (step/content/variable deletion),
+   * or null (#38). Drives the shared undo toast; see {@link UndoEntry}.
+   */
+  undo: UndoEntry | null
+  /**
+   * True when {@link closeDeck} could not proceed because flushing pending edits
+   * failed (#38). The Studio shell surfaces an explicit recovery — retry the
+   * save or discard the unsaved changes and close — instead of silently doing
+   * nothing or pretending the deck was saved.
+   */
+  closeBlocked: boolean
 
   // Deck lifecycle
   refreshSummaries: () => Promise<void>
@@ -136,6 +160,15 @@ interface DeckState {
    */
   duplicateDeck: (id: string) => Promise<void>
   closeDeck: () => Promise<void>
+  /**
+   * Recovery for a {@link closeDeck} blocked by a persistent save failure (#38):
+   * discard the unsaved in-memory changes and close the deck anyway, without
+   * pretending the data was saved. Quiesces the save coordinator (dropping the
+   * failed write) before returning to Library.
+   */
+  discardAndClose: () => Promise<void>
+  /** Dismiss the {@link closeBlocked} recovery prompt, keeping the deck open. */
+  dismissCloseBlocked: () => void
 
   // Persistence control (#38)
   /**
@@ -210,6 +243,19 @@ interface DeckState {
   reorderCards: (fromIndex: number, toIndex: number) => void
   /** Consume the pending {@link focusCardId} request (called once focus is applied). */
   clearFocusCard: () => void
+  /** Consume the pending {@link focusSnippetId} request (called once focus is applied). */
+  clearFocusSnippet: () => void
+  /** Consume the pending {@link focusVariableName} request (called once focus is applied). */
+  clearFocusVariable: () => void
+  /**
+   * Restore the item captured by the current {@link undo} entry (#38) and clear
+   * it. Re-inserts the step/content/variable at its original position, restores
+   * a predictable focus target, and re-arms a save. A no-op when there is no
+   * pending undo or it belongs to a deck that is no longer open.
+   */
+  undoLastDelete: () => void
+  /** Dismiss the pending undo without restoring (e.g. toast timeout). */
+  dismissUndo: () => void
 
   // Clipboard
   /**
@@ -282,6 +328,26 @@ export const SAVE_DEBOUNCE_MS = 500
  * right color/icon instead of every failure looking identical to a success.
  */
 export type StatusTone = 'neutral' | 'success' | 'danger'
+
+/**
+ * A reversible destructive edit (#38 safe destructive actions).
+ *
+ * Deleting a step, a piece of paste-ready content, or a variable is undoable
+ * rather than confirmed — each entry captures the removed item and enough
+ * position/context to restore it exactly, so "no primary content object
+ * disappears from one quiet click." Only one delete is undoable at a time
+ * (the newest replaces any older pending one, standard toast behavior); the
+ * deletion itself is already persisted, and undo re-adds + re-saves it.
+ *
+ * `deckId` fences an undo to the deck it came from: switching/closing decks
+ * clears the pending undo, and {@link DeckState.undoLastDelete} ignores a stale
+ * entry whose deck is no longer open. `label` is the accessible, human-readable
+ * description announced in the toast.
+ */
+export type UndoEntry =
+  | { kind: 'card'; deckId: string; label: string; card: CueCard; index: number }
+  | { kind: 'snippet'; deckId: string; label: string; cardId: string; snippet: Snippet; index: number }
+  | { kind: 'variable'; deckId: string; label: string; name: string; value: string; index: number }
 
 export const useDeckStore = create<DeckState>((set, get) => {
   /**
@@ -381,6 +447,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
     statusTone: 'neutral',
     focusCardId: null,
     focusVariablesPanel: false,
+    focusSnippetId: null,
+    focusVariableName: null,
+    undo: null,
+    closeBlocked: false,
 
     refreshSummaries: async () => {
       const summaries = await window.cuedeck.decks.list()
@@ -421,7 +491,9 @@ export const useDeckStore = create<DeckState>((set, get) => {
           // Library import/export toast) so it can't reappear as stale,
           // unrelated feedback on the new Build surface (#35 review).
           workspaceMode: modeAfterOpenDeck(),
-          statusMessage: null
+          statusMessage: null,
+          undo: null,
+          closeBlocked: false
         })
         get().clearOperationError('open')
       } catch (err) {
@@ -442,7 +514,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
         // Creating a deck moves the Studio from Library to Build (#33) —
         // clear any leftover Library statusMessage for the same reason as
         // openDeck above (#35 review).
-        set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck(), statusMessage: null })
+        set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck(), statusMessage: null, undo: null, closeBlocked: false })
         get().clearOperationError('create')
       } catch (err) {
         get().setOperationError('create', errorMessageOf(err))
@@ -492,7 +564,9 @@ export const useDeckStore = create<DeckState>((set, get) => {
           deck: null,
           activeCardId: null,
           workspaceMode: modeAfterCloseDeck(),
-          statusMessage: null
+          statusMessage: null,
+          undo: null,
+          closeBlocked: false
         })
       }
       try {
@@ -564,9 +638,13 @@ export const useDeckStore = create<DeckState>((set, get) => {
     closeDeck: async () => {
       // Persist any pending edits before leaving the deck so the debounce can't
       // discard the last change (#38). If that final write fails, keep the deck
-      // open so nothing is lost — the structured save error is already surfaced.
+      // open and flag the block so the shell can offer explicit recovery (retry
+      // or discard-and-close) — never silently do nothing or pretend it saved.
       const view = await saveCoordinator.flush()
-      if (view.status === 'error') return
+      if (view.status === 'error') {
+        set({ closeBlocked: true })
+        return
+      }
       // Leaving a deck always returns to Library; make sure we don't strand
       // the user in a tiny always-on-top presenter window.
       if (get().workspaceMode === 'present') {
@@ -576,7 +654,38 @@ export const useDeckStore = create<DeckState>((set, get) => {
       // Leaving a deck always returns to Library — clear any Build-local
       // statusMessage so it can't reappear as stale feedback in Library
       // (#35 review); mirrors the same clear in openDeck/createDeck/deleteDeck.
-      set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck(), statusMessage: null })
+      set({
+        deck: null,
+        activeCardId: null,
+        workspaceMode: modeAfterCloseDeck(),
+        statusMessage: null,
+        undo: null,
+        closeBlocked: false
+      })
+    },
+
+    discardAndClose: async () => {
+      // Explicit recovery when a save-blocked close can't succeed (#38): drop the
+      // failed pending write rather than pretending it landed, then close. The
+      // deck on disk keeps its last successfully-saved state — the unsaved edits
+      // are knowingly, deliberately discarded by the user.
+      await saveCoordinator.cancelPending()
+      saveCoordinator.reset()
+      if (get().workspaceMode === 'present') {
+        void window.cuedeck.window.setPresenter(false)
+      }
+      set({
+        deck: null,
+        activeCardId: null,
+        workspaceMode: modeAfterCloseDeck(),
+        statusMessage: null,
+        undo: null,
+        closeBlocked: false
+      })
+    },
+
+    dismissCloseBlocked: () => {
+      if (get().closeBlocked) set({ closeBlocked: false })
     },
 
     flushPendingSave: async () => {
@@ -656,11 +765,18 @@ export const useDeckStore = create<DeckState>((set, get) => {
       const next = modeAfterEnterPresent(workspaceMode, deck !== null)
       if (next === workspaceMode) return
       // Flush pending edits before the compact, read-only Present surface (#38).
-      // A failed flush keeps the current mode and preserves the typed save error
-      // so nothing is lost — consistent with closeDeck — instead of entering a
-      // Presenter window mid-failure.
+      // A failed flush keeps the current mode and surfaces an explicit reason so
+      // nothing is lost and the user understands why Present didn't open —
+      // consistent with closeDeck — instead of a silent no-op.
       const view = await saveCoordinator.flush()
-      if (view.status === 'error') return
+      if (view.status === 'error') {
+        const message = view.error?.message ?? 'your latest changes could not be saved.'
+        set({
+          statusMessage: `Can't start presenting — ${message}`,
+          statusTone: 'danger'
+        })
+        return
+      }
       set({ workspaceMode: next })
       // Fire-and-forget the window side effects; the renderer layout switches
       // immediately regardless of how the OS honors resize/always-on-top.
@@ -712,11 +828,27 @@ export const useDeckStore = create<DeckState>((set, get) => {
 
     removeCard: (cardId) => {
       const { deck, activeCardId } = get()
+      if (!deck) return
+      const index = deck.cards.findIndex((c) => c.id === cardId)
+      if (index < 0) return
+      const card = deck.cards[index]
       mutate((d) => ({ ...d, cards: d.cards.filter((c) => c.id !== cardId) }))
-      if (activeCardId === cardId && deck) {
+      if (activeCardId === cardId) {
         const remaining = deck.cards.filter((c) => c.id !== cardId)
         set({ activeCardId: remaining[0]?.id ?? null })
       }
+      // Undoable rather than confirmed (#38): capture the removed step + its
+      // position so a single quiet click never destroys content irrecoverably.
+      const title = card.title.trim()
+      set({
+        undo: {
+          kind: 'card',
+          deckId: deck.id,
+          label: title ? `Deleted “${title}”.` : 'Deleted step.',
+          card,
+          index
+        }
+      })
     },
 
     setActiveCard: (cardId) => set({ activeCardId: cardId }),
@@ -736,6 +868,58 @@ export const useDeckStore = create<DeckState>((set, get) => {
 
     clearFocusCard: () => {
       if (get().focusCardId !== null) set({ focusCardId: null })
+    },
+
+    clearFocusSnippet: () => {
+      if (get().focusSnippetId !== null) set({ focusSnippetId: null })
+    },
+
+    clearFocusVariable: () => {
+      if (get().focusVariableName !== null) set({ focusVariableName: null })
+    },
+
+    undoLastDelete: () => {
+      const { undo, deck } = get()
+      // Ignore a stale undo whose deck is no longer open (switched/closed).
+      if (!undo || !deck || deck.id !== undo.deckId) {
+        if (undo) set({ undo: null })
+        return
+      }
+      if (undo.kind === 'card') {
+        mutate((d) => {
+          if (d.cards.some((c) => c.id === undo.card.id)) return d
+          const cards = [...d.cards]
+          cards.splice(Math.min(undo.index, cards.length), 0, undo.card)
+          return { ...d, cards }
+        })
+        // Restore a predictable focus target: the recovered step, active + focused.
+        set({ activeCardId: undo.card.id, focusCardId: undo.card.id, undo: null })
+      } else if (undo.kind === 'snippet') {
+        mutate((d) => ({
+          ...d,
+          cards: d.cards.map((c) => {
+            if (c.id !== undo.cardId) return c
+            if (c.snippets.some((s) => s.id === undo.snippet.id)) return c
+            const snippets = [...c.snippets]
+            snippets.splice(Math.min(undo.index, snippets.length), 0, undo.snippet)
+            return { ...c, snippets }
+          })
+        }))
+        set({ activeCardId: undo.cardId, focusSnippetId: undo.snippet.id, undo: null })
+      } else {
+        mutate((d) => {
+          const cur = d.variables ?? {}
+          if (undo.name in cur) return d
+          const entries = Object.entries(cur)
+          entries.splice(Math.min(undo.index, entries.length), 0, [undo.name, undo.value])
+          return { ...d, variables: Object.fromEntries(entries) }
+        })
+        set({ focusVariableName: undo.name, undo: null })
+      }
+    },
+
+    dismissUndo: () => {
+      if (get().undo !== null) set({ undo: null })
     },
 
     copySnippet: async (cardId, snippetId) => {
@@ -803,13 +987,34 @@ export const useDeckStore = create<DeckState>((set, get) => {
         )
       })),
 
-    removeSnippet: (cardId, snippetId) =>
+    removeSnippet: (cardId, snippetId) => {
+      const { deck } = get()
+      if (!deck) return
+      const card = deck.cards.find((c) => c.id === cardId)
+      const index = card?.snippets.findIndex((s) => s.id === snippetId) ?? -1
+      const snippet = index >= 0 ? card!.snippets[index] : undefined
       mutate((d) => ({
         ...d,
         cards: d.cards.map((c) =>
           c.id === cardId ? { ...c, snippets: c.snippets.filter((s) => s.id !== snippetId) } : c
         )
-      })),
+      }))
+      // Undoable rather than confirmed (#38): capture the removed content so
+      // it can be restored in place with a predictable focus target.
+      if (snippet) {
+        const label = snippet.label.trim()
+        set({
+          undo: {
+            kind: 'snippet',
+            deckId: deck.id,
+            label: label ? `Deleted “${label}”.` : 'Deleted paste-ready content.',
+            cardId,
+            snippet,
+            index
+          }
+        })
+      }
+    },
 
     reorderSnippets: (cardId, fromIndex, toIndex) =>
       mutate((d) => ({
@@ -827,14 +1032,33 @@ export const useDeckStore = create<DeckState>((set, get) => {
       mutate((d) => ({ ...d, variables: { ...(d.variables ?? {}), [key]: value } }))
     },
 
-    removeVariable: (name) =>
+    removeVariable: (name) => {
+      const { deck } = get()
+      if (!deck) return
+      const current = deck.variables ?? {}
+      if (!(name in current)) return
+      const index = Object.keys(current).indexOf(name)
+      const value = current[name]
       mutate((d) => {
-        const current = d.variables ?? {}
-        if (!(name in current)) return d
-        const next = { ...current }
+        const cur = d.variables ?? {}
+        if (!(name in cur)) return d
+        const next = { ...cur }
         delete next[name]
         return { ...d, variables: next }
-      }),
+      })
+      // Undoable rather than confirmed (#38): capture the removed variable +
+      // its position so undo restores it exactly where it was.
+      set({
+        undo: {
+          kind: 'variable',
+          deckId: deck.id,
+          label: `Deleted variable “${name}”.`,
+          name,
+          value,
+          index
+        }
+      })
+    },
 
     renameVariable: (from, to) => {
       const target = to.trim()

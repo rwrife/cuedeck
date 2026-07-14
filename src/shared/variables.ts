@@ -67,6 +67,40 @@ function hasValue(value: string | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+/** Result of validating a candidate variable name (create or rename). */
+export type VariableNameValidation = { ok: true; name: string } | { ok: false; error: string }
+
+/**
+ * Validate a candidate variable name for the Variables panel (#38 inline
+ * guidance). Trims surrounding whitespace, then enforces the same
+ * {@link VARIABLE_NAME_PATTERN} the `{{placeholder}}` scanner uses — so a name
+ * the user types here can actually be referenced from snippet content — and
+ * rejects collisions with an already-defined key. Pure and DOM-free so the
+ * exact, actionable messages are unit-tested independently of any component and
+ * a bad rename can surface guidance instead of silently reverting.
+ *
+ * `existing` is the set of already-defined variable names. `current`, when
+ * given, is the name being renamed *from* — it is excluded from the collision
+ * check so re-committing an unchanged name is allowed (and reported as ok).
+ */
+export function validateVariableName(
+  raw: string,
+  existing: Iterable<string> = [],
+  options: { current?: string } = {}
+): VariableNameValidation {
+  const name = raw.trim()
+  if (name.length === 0) {
+    return { ok: false, error: 'Give this variable a name.' }
+  }
+  if (!VARIABLE_NAME_PATTERN.test(name)) {
+    return { ok: false, error: 'Use only letters, numbers, and _ . - (no spaces).' }
+  }
+  if (name !== options.current && new Set(existing).has(name)) {
+    return { ok: false, error: `A variable named “${name}” already exists.` }
+  }
+  return { ok: true, name }
+}
+
 /**
  * Substitute `{{name}}` placeholders in `content` using `vars`.
  *
