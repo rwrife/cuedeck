@@ -1,5 +1,6 @@
 import { useDeckStore } from '../store/deckStore'
 import { useDragSort } from '../hooks/useDragSort'
+import { GripIcon } from './ui/icons'
 
 /** Private drag type marking an internal card-reorder drag (see useDragSort). */
 const CARD_DND_TYPE = 'application/x-cuedeck-card'
@@ -69,7 +70,7 @@ export function CardList(): JSX.Element {
                   title="Drag to reorder"
                   aria-hidden="true"
                 >
-                  ⠿
+                  <GripIcon />
                 </span>
                 <span className={`text-xs ${isActive ? 'text-white/70' : 'text-deck-muted'}`}>
                   {i + 1}
