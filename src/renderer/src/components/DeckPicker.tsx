@@ -5,12 +5,14 @@ import { IconButton } from './ui/IconButton'
 import { TextField } from './ui/TextField'
 import { EmptyState } from './ui/EmptyState'
 import { StatusBanner } from './ui/StatusBanner'
-import { ClapperboardIcon, TrashIcon } from './ui/icons'
+import { TrashIcon } from './ui/icons'
 
 /**
  * Library mode content (#33 Studio shell): pick an existing deck or create a
- * new one. Settings now lives in the shared Studio header, so this surface
- * only owns deck-collection actions (create, import, open, export, delete).
+ * new one. The Studio shell's shared `PageHeader` now owns the page
+ * title/brand and description (rendered as its subtitle while in Library
+ * mode), and Settings lives in the shell's top bar — so this surface only
+ * owns deck-collection actions (create, import, open, export, delete).
  */
 export function DeckPicker(): JSX.Element {
   const summaries = useDeckStore((s) => s.summaries)
@@ -32,14 +34,6 @@ export function DeckPicker(): JSX.Element {
 
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col gap-6 p-10">
-      <header>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
-          <ClapperboardIcon />
-          CueDeck
-        </h1>
-        <p className="mt-1 text-deck-muted">Your demo cue cards + instant clipboard snippets.</p>
-      </header>
-
       <div className="flex gap-2">
         <TextField
           value={newName}

@@ -13,6 +13,7 @@ import {
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
+import { flushPendingSave, type PendingSaveDeps } from '@shared/pendingSave'
 import { useSettingsStore } from './settingsStore'
 import { playCopyChime } from '../lib/copySound'
 
@@ -150,6 +151,17 @@ let copyFlashTimer: ReturnType<typeof setTimeout> | null = null
 export const COPY_FLASH_MS = 1200
 
 export const useDeckStore = create<DeckState>((set, get) => {
+  /** Real dependencies for {@link flushPendingSave} — see that module for why
+   *  they're injected rather than read directly (testability without IPC). */
+  const pendingSaveDeps: PendingSaveDeps = {
+    hasPendingSave: () => saveTimer !== null,
+    cancelPendingSave: () => {
+      if (saveTimer) clearTimeout(saveTimer)
+      saveTimer = null
+    },
+    save: (deck) => window.cuedeck.decks.save(deck)
+  }
+
   /** Debounced persistence — called after any mutation. */
   function scheduleSave(): void {
     const { deck } = get()
@@ -160,8 +172,19 @@ export const useDeckStore = create<DeckState>((set, get) => {
       if (!current) return
       set({ saving: true })
       const saved = await window.cuedeck.decks.save(current)
+      saveTimer = null
       set({ saving: false, deck: { ...current, updatedAt: saved.updatedAt } })
     }, 500)
+  }
+
+  /**
+   * Flush the currently-open deck's pending debounced edit (if any) before it
+   * gets replaced by a different deck. Library remains reachable without
+   * closing the open deck (#33), so opening/creating another deck must not
+   * silently drop an edit still sitting inside the 500ms debounce window.
+   */
+  async function flushOutgoingDeck(): Promise<void> {
+    await flushPendingSave(get().deck, pendingSaveDeps)
   }
 
   /** Apply a mutation to the active deck, then schedule a save. */
@@ -216,6 +239,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     openDeck: async (id) => {
+      // Flush the outgoing deck's pending debounced edit first — Library is
+      // reachable without closing the open deck, so switching decks must not
+      // race the save debounce and lose the last edit (#33).
+      await flushOutgoingDeck()
       set({ loading: true })
       const loaded = await window.cuedeck.decks.load(id)
       // Route the loaded deck through the shared validator/normalizer. A deck
@@ -239,6 +266,9 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     createDeck: async (name) => {
+      // Same rationale as `openDeck`: flush any pending edit on the
+      // currently-open deck before it's replaced by the new one.
+      await flushOutgoingDeck()
       const deck = await window.cuedeck.decks.create(name)
       await get().refreshSummaries()
       // Creating a deck moves the Studio from Library to Build (#33).

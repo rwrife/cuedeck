@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { cx } from '../src/renderer/src/lib/ui/classNames'
-import { buttonClasses, resolveAriaPressed, toneClasses } from '../src/renderer/src/lib/ui/variants'
+import {
+  buttonClasses,
+  resolveAriaDisabled,
+  resolveAriaPressed,
+  toneClasses
+} from '../src/renderer/src/lib/ui/variants'
 import { prefersReducedMotion } from '../src/renderer/src/lib/ui/reducedMotion'
 import { FOCUSABLE_SELECTOR, getFocusableElements } from '../src/renderer/src/lib/ui/focusTrap'
 import {
@@ -122,6 +127,19 @@ describe('ui: resolveAriaPressed (Button toggle semantics)', () => {
   it('preserves an explicitly provided aria-pressed over the derived `active` value', () => {
     expect(resolveAriaPressed(true, 'mixed')).toBe('mixed')
     expect(resolveAriaPressed(undefined, false)).toBe(false)
+  })
+})
+
+describe('ui: resolveAriaDisabled (focusable-while-unavailable controls)', () => {
+  it('returns true when the control is unavailable, so it stays focusable and describable', () => {
+    // Deliberately NOT the native `disabled` attribute: a real `disabled`
+    // control is removed from the tab order, so keyboard users could never
+    // discover it or read its explanatory tooltip/description.
+    expect(resolveAriaDisabled(false)).toBe(true)
+  })
+
+  it('returns undefined when the control is available (no attribute emitted)', () => {
+    expect(resolveAriaDisabled(true)).toBeUndefined()
   })
 })
 

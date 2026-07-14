@@ -115,6 +115,11 @@ export function StudioShell(): JSX.Element {
       {/* Shared page header: current context + one primary next action */}
       <PageHeader
         title={deck && workspaceMode !== 'library' ? deck.name : MODE_TITLE[workspaceMode]}
+        subtitle={
+          workspaceMode === 'library'
+            ? 'Your demo cue cards + instant clipboard snippets.'
+            : undefined
+        }
         status={
           hasDeckContext
             ? `${MODE_TITLE[workspaceMode]} · ${saving ? 'Saving…' : 'Saved'}`

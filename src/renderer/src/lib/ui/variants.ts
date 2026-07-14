@@ -91,3 +91,18 @@ export function resolveAriaPressed(
   if (explicitAriaPressed !== undefined) return explicitAriaPressed
   return active
 }
+
+/**
+ * Resolves the `aria-disabled` value for a control that must stay in the tab
+ * order while unavailable, so keyboard users can still focus it and read its
+ * accessible name/description (e.g. a tooltip explaining why). Prefer this
+ * over the native `disabled` attribute — which removes a control from the
+ * tab order entirely — whenever the reason it's unavailable needs to be
+ * discoverable, not just visible.
+ *
+ * Callers still must guard the control's activation handler themselves
+ * (`aria-disabled` has no built-in effect on click/keydown behavior).
+ */
+export function resolveAriaDisabled(available: boolean): true | undefined {
+  return available ? undefined : true
+}

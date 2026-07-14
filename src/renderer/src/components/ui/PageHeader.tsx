@@ -4,6 +4,12 @@ import { cx } from '../../lib/ui/classNames'
 export interface PageHeaderProps {
   /** Current page/mode title (e.g. the deck name, or "Library"). */
   title: ReactNode
+  /**
+   * Optional one-line description shown under the title (e.g. Library's
+   * "Your demo cue cards + instant clipboard snippets."). Only meaningful
+   * while there's no deck-specific status to show instead.
+   */
+  subtitle?: ReactNode
   /** Small status text shown beside the title (e.g. "Saving…" / "Saved"). */
   status?: ReactNode
   /**
@@ -28,6 +34,7 @@ export interface PageHeaderProps {
  */
 export function PageHeader({
   title,
+  subtitle,
   status,
   secondaryActions,
   primaryAction,
@@ -40,9 +47,12 @@ export function PageHeader({
         className
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <h1 className="truncate text-base font-semibold">{title}</h1>
-        {status && <span className="shrink-0 text-xs text-deck-muted">{status}</span>}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-base font-semibold">{title}</h1>
+          {status && <span className="shrink-0 text-xs text-deck-muted">{status}</span>}
+        </div>
+        {subtitle && <p className="truncate text-xs text-deck-muted">{subtitle}</p>}
       </div>
       {(secondaryActions || primaryAction) && (
         <div className="flex flex-wrap items-center gap-2">
