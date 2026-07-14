@@ -635,7 +635,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     addCard: () => {
-      const card: CueCard = { id: uid(), title: 'New Card', notes: '', snippets: [] }
+      // Empty title (#35): the presenter-friendly "Untitled step" fallback
+      // covers display, and starting empty keeps focus-on-create natural
+      // (select() on an empty field is a no-op cursor, not a value to clear).
+      const card: CueCard = { id: uid(), title: '', notes: '', snippets: [] }
       mutate((d) => ({ ...d, cards: [...d.cards, card] }))
       // Focus the new card immediately (#34/Accessibility: focus moves to
       // newly created content) rather than leaving the user to hunt for it,
@@ -720,7 +723,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
       const { deck } = get()
       if (!deck?.cards.some((c) => c.id === cardId)) return null
 
-      const snippet: Snippet = { id: uid(), label: 'New Snippet', content: '' }
+      const snippet: Snippet = { id: uid(), label: '', content: '' }
       mutate((d) => ({
         ...d,
         cards: d.cards.map((c) =>

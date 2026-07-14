@@ -83,7 +83,7 @@ export function DeckWorkspace(): JSX.Element {
             <span>search</span>
             <span className="text-deck-border">·</span>
             <KeyboardHint keys={['F5']} />
-            <span>rehearse</span>
+            <span>present</span>
           </footer>
         </main>
       </div>

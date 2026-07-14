@@ -259,6 +259,26 @@ describe('addCard / addSnippet return the new id for immediate focus (#35)', () 
     expect(useDeckStore.getState().deck).toBe(before)
     expect(saveMock).not.toHaveBeenCalled()
   })
+
+  it('addCard starts with an empty title (no legacy "New Card" default)', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+
+    const id = useDeckStore.getState().addCard()
+
+    const card = useDeckStore.getState().deck?.cards.find((c) => c.id === id)
+    expect(card?.title).toBe('')
+  })
+
+  it('addSnippet starts with an empty label (no legacy "New Snippet" default)', () => {
+    useDeckStore.setState({ deck: makeDeck(), workspaceMode: 'build' })
+    const cardId = useDeckStore.getState().addCard()
+
+    const snippetId = useDeckStore.getState().addSnippet(cardId)
+
+    const card = useDeckStore.getState().deck?.cards.find((c) => c.id === cardId)
+    const snippet = card?.snippets.find((s) => s.id === snippetId)
+    expect(snippet?.label).toBe('')
+  })
 })
 
 describe('open/create flush the outgoing deck before switching (#33/#38)', () => {
