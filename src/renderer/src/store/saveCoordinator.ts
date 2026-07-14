@@ -103,6 +103,13 @@ export class SaveCoordinator<T extends Persistable> {
   private savingRevision: number | null = null
   private error: SaveError | null = null
 
+  /**
+   * Monotonic epoch bumped by {@link reset}. Each write captures the epoch it
+   * started under; a completion whose epoch is stale (because the active deck
+   * was replaced mid-write) must not mutate coordinator state for the new deck.
+   */
+  private generation = 0
+
   private timer: ReturnType<typeof setTimeout> | null = null
   /** The in-flight write promise, so flush/overlap can await it. */
   private inFlight: Promise<void> | null = null
@@ -166,14 +173,37 @@ export class SaveCoordinator<T extends Persistable> {
   }
 
   /**
+   * Quiesce the coordinator so the underlying file can be safely deleted:
+   * cancel any pending debounce and await any in-flight write to fully settle,
+   * without starting new writes. After this resolves no save is pending or in
+   * flight, so unlinking the deck cannot race a write that would recreate it.
+   *
+   * Resolves even if the in-flight (or pending) write failed — deletion
+   * supersedes persistence, so a failed final save is intentionally discarded
+   * rather than surfaced. Callers typically follow with {@link reset}.
+   */
+  async cancelPending(): Promise<void> {
+    this.clearTimer()
+    // The in-flight promise never rejects (runSave catches internally), so this
+    // is safe to await directly. A completion may re-arm the debounce, so clear
+    // the timer again afterwards.
+    const pending = this.inFlight
+    if (pending) await pending
+    this.clearTimer()
+  }
+
+  /**
    * Return to a clean idle state, cancelling any pending debounce and clearing
    * revisions/error. Used when the active deck is replaced (open/create/close)
    * so the new deck starts from a trustworthy "saved" baseline and never
-   * inherits the previous deck's dirty/error state. An already in-flight write
-   * is left to settle harmlessly — {@link applySavedTimestamp} guards it by id.
+   * inherits the previous deck's dirty/error state. Bumping the generation
+   * fences off any in-flight write started for the previous deck: when it
+   * settles it releases its own in-flight handle but does not touch
+   * savedRevision, error, onSaved, or re-arm for the new deck.
    */
   reset(): void {
     this.clearTimer()
+    this.generation += 1
     this.revision = 0
     this.savedRevision = 0
     this.savingRevision = null
@@ -224,6 +254,7 @@ export class SaveCoordinator<T extends Persistable> {
     if (!deck) return Promise.resolve()
 
     const revisionBeingSaved = this.revision
+    const generationBeingSaved = this.generation
     this.savingRevision = revisionBeingSaved
     this.error = null
     this.publish()
@@ -231,19 +262,30 @@ export class SaveCoordinator<T extends Persistable> {
     this.inFlight = (async () => {
       try {
         const saved = await this.options.save(deck)
+        // Stale completion: the deck was reset/replaced while we were writing.
+        // Ignore the result entirely so it can't mark the new deck saved.
+        if (generationBeingSaved !== this.generation) return
         this.savingRevision = null
         this.savedRevision = Math.max(this.savedRevision, revisionBeingSaved)
         this.options.onSaved?.(deck.id, saved.updatedAt)
       } catch (err) {
+        // Stale failure: don't surface the previous deck's error on the new one.
+        if (generationBeingSaved !== this.generation) return
         this.savingRevision = null
         this.error = { message: errorMessage(err) }
       } finally {
+        // Release the in-flight handle so flush()/cancelPending() can make
+        // progress. Safe to null unconditionally: no other write can replace it
+        // while it is non-null (runSave early-returns), and reset() never
+        // reassigns it — so this always releases exactly this write.
         this.inFlight = null
-        this.publish()
-        // Newer edits arrived while we were writing (and the write succeeded):
-        // make sure a follow-up write is armed even if no further edit fires.
-        if (!this.error && this.hasUnsavedEdits() && !this.timer) {
-          this.armTimer()
+        if (generationBeingSaved === this.generation) {
+          this.publish()
+          // Newer edits arrived while we were writing (and the write succeeded):
+          // make sure a follow-up write is armed even if no further edit fires.
+          if (!this.error && this.hasUnsavedEdits() && !this.timer) {
+            this.armTimer()
+          }
         }
       }
     })()

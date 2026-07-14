@@ -328,15 +328,20 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     deleteDeck: async (id) => {
-      await window.cuedeck.decks.remove(id)
       const { deck, workspaceMode } = get()
       if (deck?.id === id) {
-        // Fresh baseline so a stale write can't mark the removed deck saved (#38).
+        // Quiesce the coordinator BEFORE unlinking so an in-flight or pending
+        // save cannot recreate the file we're about to delete (#38). A failed
+        // final save is intentionally discarded — deletion supersedes
+        // persistence. `cancelPending` awaits any in-flight write and cancels
+        // the debounce; `reset` then fences it off and clears state.
+        await saveCoordinator.cancelPending()
         saveCoordinator.reset()
         // Don't strand the user in a tiny always-on-top presenter window.
         if (workspaceMode === 'present') void window.cuedeck.window.setPresenter(false)
         set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
       }
+      await window.cuedeck.decks.remove(id)
       await get().refreshSummaries()
     },
 

@@ -296,6 +296,152 @@ describe('SaveCoordinator', () => {
     expect(coord.getView().status).toBe('idle')
     expect(coord.getView().error).toBeNull()
   })
+
+  describe('generation fence (reset while a write is in flight)', () => {
+    it('a stale write that resolves after reset cannot mark the new deck saved', async () => {
+      const oldSave = deferred<TestDeck>()
+      const newSave = deferred<TestDeck>()
+      const save = vi
+        .fn<[TestDeck], Promise<TestDeck>>()
+        .mockReturnValueOnce(oldSave.promise)
+        .mockReturnValueOnce(newSave.promise)
+      const { coord, setDeck, onSaved } = setup({ save })
+
+      // Old deck edited; its write is dispatched and left in flight.
+      const oldDeck: TestDeck = { id: 'old', updatedAt: 'o0' }
+      setDeck(oldDeck)
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+      expect(save).toHaveBeenNthCalledWith(1, oldDeck)
+      expect(coord.getView().status).toBe('saving')
+
+      // User navigates away → reset — but the old write is still pending.
+      coord.reset()
+      const newDeck: TestDeck = { id: 'new', updatedAt: 'n0' }
+      setDeck(newDeck)
+      coord.noteEdit()
+      expect(coord.getView().dirty).toBe(true)
+
+      // The stale old write now resolves. It must NOT stamp/save the new deck
+      // nor clear its dirty flag.
+      oldSave.resolve({ ...oldDeck, updatedAt: 'o-saved' })
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(onSaved).not.toHaveBeenCalled()
+      expect(coord.getView().dirty).toBe(true)
+      expect(coord.getView().status).not.toBe('saved')
+
+      // The new deck's edit is still pending and gets saved on its own timer.
+      vi.advanceTimersByTime(DEBOUNCE)
+      expect(save).toHaveBeenNthCalledWith(2, newDeck)
+      newSave.resolve({ ...newDeck, updatedAt: 'n-saved' })
+      await coord.flush()
+      expect(coord.getView()).toEqual({ status: 'saved', dirty: false, error: null })
+      expect(onSaved).toHaveBeenCalledWith('new', 'n-saved')
+    })
+
+    it('a stale write that fails after reset does not surface an error on the new deck', async () => {
+      const oldSave = deferred<TestDeck>()
+      const save = vi
+        .fn<[TestDeck], Promise<TestDeck>>()
+        .mockReturnValueOnce(oldSave.promise)
+        .mockResolvedValue({ id: 'new', updatedAt: 'n1' })
+      const { coord, setDeck } = setup({ save })
+
+      setDeck({ id: 'old', updatedAt: 'o0' })
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+
+      coord.reset()
+      setDeck({ id: 'new', updatedAt: 'n0' })
+      coord.noteEdit()
+
+      oldSave.reject(new Error('old deck disk full'))
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(coord.getView().status).not.toBe('error')
+      expect(coord.getView().error).toBeNull()
+      expect(coord.getView().dirty).toBe(true)
+    })
+
+    it('does not clobber a fresh in-flight save started after reset', async () => {
+      const oldSave = deferred<TestDeck>()
+      const newSave = deferred<TestDeck>()
+      const save = vi
+        .fn<[TestDeck], Promise<TestDeck>>()
+        .mockReturnValueOnce(oldSave.promise)
+        .mockReturnValueOnce(newSave.promise)
+      const { coord, setDeck } = setup({ save })
+
+      setDeck({ id: 'old', updatedAt: 'o0' })
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+
+      // Reset, then let the old write settle so inFlight is released.
+      coord.reset()
+      oldSave.resolve({ id: 'old', updatedAt: 'o-saved' })
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // New deck edit + its write is now genuinely in flight.
+      const newDeck: TestDeck = { id: 'new', updatedAt: 'n0' }
+      setDeck(newDeck)
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+      expect(save).toHaveBeenNthCalledWith(2, newDeck)
+      expect(coord.getView().status).toBe('saving')
+
+      newSave.resolve({ ...newDeck, updatedAt: 'n-saved' })
+      await coord.flush()
+      expect(coord.getView()).toEqual({ status: 'saved', dirty: false, error: null })
+    })
+  })
+
+  describe('cancelPending (safe teardown before deleting the underlying file)', () => {
+    it('cancels a pending debounce so no write is issued', async () => {
+      const { coord, save } = setup()
+      coord.noteEdit()
+      await coord.cancelPending()
+      vi.advanceTimersByTime(DEBOUNCE * 2)
+      expect(save).not.toHaveBeenCalled()
+    })
+
+    it('waits for an in-flight write to settle before resolving', async () => {
+      const d = deferred<TestDeck>()
+      const save = vi.fn(() => d.promise)
+      const { coord } = setup({ save })
+
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+      expect(coord.getView().status).toBe('saving')
+
+      let settled = false
+      const cancelled = coord.cancelPending().then(() => {
+        settled = true
+      })
+      await Promise.resolve()
+      expect(settled).toBe(false)
+
+      d.resolve({ id: 'deck-1', updatedAt: 't1' })
+      await cancelled
+      expect(settled).toBe(true)
+
+      // No further writes may be armed once cancelled (nothing can recreate a
+      // file that is about to be deleted).
+      vi.advanceTimersByTime(DEBOUNCE * 2)
+      expect(save).toHaveBeenCalledTimes(1)
+    })
+
+    it('resolves even when the in-flight write fails (delete proceeds regardless)', async () => {
+      const save = vi.fn(async () => {
+        throw new Error('write failed')
+      })
+      const { coord } = setup({ save })
+      coord.noteEdit()
+      vi.advanceTimersByTime(DEBOUNCE)
+      await expect(coord.cancelPending()).resolves.toBeUndefined()
+    })
+  })
 })
 
 describe('applySavedTimestamp', () => {
