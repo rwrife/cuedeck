@@ -184,11 +184,17 @@ export class SaveCoordinator<T extends Persistable> {
    */
   async cancelPending(): Promise<void> {
     this.clearTimer()
-    // The in-flight promise never rejects (runSave catches internally), so this
-    // is safe to await directly. A completion may re-arm the debounce, so clear
-    // the timer again afterwards.
-    const pending = this.inFlight
-    if (pending) await pending
+    // Await any in-flight write to settle. Awaiting one may spawn a follow-up
+    // (a stale write can auto-start the current generation's save on release, or
+    // a completion can re-arm the debounce), so loop until the coordinator is
+    // truly quiescent — no write in flight — before returning. The in-flight
+    // promise never rejects (runSave catches internally), so awaiting is safe.
+    let iterations = 0
+    while (this.inFlight && iterations < MAX_FLUSH_ITERATIONS) {
+      iterations += 1
+      await this.inFlight
+      this.clearTimer()
+    }
     this.clearTimer()
   }
 
@@ -286,6 +292,15 @@ export class SaveCoordinator<T extends Persistable> {
           if (!this.error && this.hasUnsavedEdits() && !this.timer) {
             this.armTimer()
           }
+        } else if (this.hasUnsavedEdits()) {
+          // Stale write: this write belonged to a previous generation, but the
+          // current deck has pending edits whose debounce may have been swallowed
+          // while this write occupied the in-flight slot (runSave early-returns
+          // when a write is in flight). Now that the slot is free, kick off the
+          // current generation's save so the new deck cannot stay dirty forever
+          // without another edit or an explicit flush. runSave reads the *current*
+          // deck/revision, so no stale value leaks into the new generation.
+          void this.runSave()
         }
       }
     })()
