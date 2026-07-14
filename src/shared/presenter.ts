@@ -71,3 +71,48 @@ export function isPresenterToggleKey(e: {
 
   return false
 }
+
+/**
+ * A single contextual shortcut hint surfaced in the Presenter footer.
+ *
+ * The presenter is a compact delivery surface driven mostly by the keyboard, so
+ * we show the shortcuts inline rather than assuming the user has memorized them.
+ * `keys` is the human-readable key label(s); `label` is what pressing them does.
+ */
+export interface PresenterShortcut {
+  readonly keys: string
+  readonly label: string
+}
+
+/**
+ * Build the contextual shortcut hints for the current presenter state.
+ *
+ * The list adapts so we never advertise an action that can't be taken:
+ *  - the copy hint only appears when the active card has at least one snippet,
+ *    and reflects how many number keys are live (1, 1–2, … 1–9).
+ *  - the previous/next hints only appear when there is somewhere to go.
+ *  - exit is always available.
+ *
+ * Pure and DOM-free so it can be unit-tested and reused by the renderer.
+ */
+export function presenterShortcuts(opts: {
+  snippetCount: number
+  canGoPrev: boolean
+  canGoNext: boolean
+}): PresenterShortcut[] {
+  const hints: PresenterShortcut[] = []
+
+  const copyKeys = Math.min(Math.max(opts.snippetCount, 0), 9)
+  if (copyKeys === 1) {
+    hints.push({ keys: '1', label: 'Copy snippet' })
+  } else if (copyKeys > 1) {
+    hints.push({ keys: `1–${copyKeys}`, label: 'Copy snippet' })
+  }
+
+  if (opts.canGoPrev) hints.push({ keys: '←', label: 'Previous' })
+  if (opts.canGoNext) hints.push({ keys: '→', label: 'Next' })
+
+  hints.push({ keys: 'F5', label: 'Exit' })
+
+  return hints
+}
