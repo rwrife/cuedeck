@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { isPresenterToggleKey } from '@shared/presenter'
+import { saveStatusLabel } from '@shared/saveStatus'
 import { WORKSPACE_MODE_INFO, type WorkspaceMode } from '@shared/workspace'
 import { ModeRail } from './ModeRail'
 import { DeckPicker } from './DeckPicker'
@@ -60,7 +61,7 @@ function usePrimaryAction(): { label: string; onClick: () => void; hint: string 
 export function StudioShell(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)
   const workspace = useDeckStore((s) => s.workspace)
-  const saving = useDeckStore((s) => s.saving)
+  const saveState = useDeckStore((s) => s.saveState)
   const closeDeck = useDeckStore((s) => s.closeDeck)
   const primary = usePrimaryAction()
 
@@ -110,7 +111,18 @@ export function StudioShell(): JSX.Element {
               </h1>
             </div>
             {deck ? (
-              <span className="text-xs text-deck-muted">{saving ? 'Saving…' : 'Saved'}</span>
+              <span
+                role="status"
+                aria-live="polite"
+                className={
+                  saveState.status === 'error'
+                    ? 'text-xs font-medium text-deck-status-error'
+                    : 'text-xs text-deck-muted'
+                }
+                title={saveState.error ?? undefined}
+              >
+                {saveStatusLabel(saveState)}
+              </span>
             ) : null}
           </div>
           {primary ? (

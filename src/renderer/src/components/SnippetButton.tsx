@@ -4,6 +4,7 @@ import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
 import { BUILD_LANGUAGE, contentLabelFieldId } from '@shared/buildLanguage'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
+import { ConfirmDeleteButton } from './ConfirmDeleteButton'
 
 interface Props {
   cardId: string
@@ -150,13 +151,13 @@ export function SnippetButton({
         >
           {expanded ? '▾' : '▸'}
         </button>
-        <button
-          onClick={() => removeSnippet(cardId, snippet.id)}
-          className="rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
+        <ConfirmDeleteButton
+          onConfirm={() => removeSnippet(cardId, snippet.id)}
+          label="✕"
+          confirmLabel="Delete?"
           title={BUILD_LANGUAGE.content.singular + ' — delete'}
-        >
-          ✕
-        </button>
+          className="rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
+        />
       </div>
 
       {/* Referenced-variable chips (#7): shows which `{{variables}}` this snippet

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
-import { collectReferencedVariables } from '@shared/variables'
+import { collectReferencedVariables, validateVariableName } from '@shared/variables'
 import { variableValueFieldId } from '@shared/buildLanguage'
 import { REVEAL_VARIABLE_EVENT } from '../store/deckStore'
 
@@ -23,38 +23,54 @@ function VariableRow({
   const variables = useDeckStore((s) => s.deck?.variables ?? {})
 
   const [draftKey, setDraftKey] = useState(name)
+  // Inline validation guidance shown instead of a silent revert (#38).
+  const [keyError, setKeyError] = useState<string | null>(null)
 
   function commitKey(): void {
     const next = draftKey.trim()
-    if (!next || next === name) {
-      setDraftKey(name) // revert blank / no-op edits
+    if (next === name) {
+      setDraftKey(name)
+      setKeyError(null)
       return
     }
-    if (next in variables) {
-      setDraftKey(name) // refuse collisions; keep existing keys intact
+    const others = Object.keys(variables).filter((k) => k !== name)
+    const check = validateVariableName(next, others, name)
+    if (!check.ok) {
+      // Keep what the user typed and tell them why it can't be applied, rather
+      // than silently snapping back to the old key (#38).
+      setKeyError(check.reason ?? 'Invalid name.')
       return
     }
+    setKeyError(null)
     renameVariable(name, next)
   }
 
   const empty = value.trim().length === 0
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
       <input
         value={draftKey}
-        onChange={(e) => setDraftKey(e.target.value)}
+        onChange={(e) => {
+          setDraftKey(e.target.value)
+          if (keyError) setKeyError(null)
+        }}
         onBlur={commitKey}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur()
           if (e.key === 'Escape') {
             setDraftKey(name)
+            setKeyError(null)
             e.currentTarget.blur()
           }
         }}
         spellCheck={false}
         aria-label={`Variable name (${name})`}
-        className="w-40 shrink-0 rounded border border-deck-border bg-deck-panel px-2 py-1 font-mono text-xs outline-none focus:border-deck-accent"
+        aria-invalid={keyError ? true : undefined}
+        className={`w-40 shrink-0 rounded border bg-deck-panel px-2 py-1 font-mono text-xs outline-none focus:border-deck-accent ${
+          keyError ? 'border-deck-status-error' : 'border-deck-border'
+        }`}
       />
       <span className="text-deck-muted">=</span>
       <input
@@ -85,6 +101,12 @@ function VariableRow({
       >
         ✕
       </button>
+      </div>
+      {keyError && (
+        <p role="alert" className="pl-1 text-[11px] text-deck-status-error">
+          {keyError}
+        </p>
+      )}
     </div>
   )
 }
@@ -107,8 +129,11 @@ export function VariablesPanel(): JSX.Element {
   const addReferencedVariables = useDeckStore((s) => s.addReferencedVariables)
   const setStatusMessage = useDeckStore((s) => s.setStatusMessage)
 
+
   const [open, setOpen] = useState(false)
   const [newName, setNewName] = useState('')
+  // Inline guidance for the new-variable field (#38).
+  const [newError, setNewError] = useState<string | null>(null)
 
   // React to a readiness warning that links here (#36): open the panel and
   // focus the offending variable's value field so the user lands on the fix.
@@ -146,11 +171,12 @@ export function VariablesPanel(): JSX.Element {
   function addNew(): void {
     const key = newName.trim()
     if (!key) return
-    if (key in variables) {
-      setStatusMessage(`Variable “${key}” already exists.`)
-      setNewName('')
+    const check = validateVariableName(key, Object.keys(variables))
+    if (!check.ok) {
+      setNewError(check.reason ?? 'Invalid name.')
       return
     }
+    setNewError(null)
     setVariable(key, '')
     setNewName('')
   }
@@ -205,10 +231,14 @@ export function VariablesPanel(): JSX.Element {
           )}
 
           {/* New-variable row */}
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
             <input
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              onChange={(e) => {
+                setNewName(e.target.value)
+                if (newError) setNewError(null)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
@@ -218,7 +248,10 @@ export function VariablesPanel(): JSX.Element {
               placeholder="new variable name…"
               spellCheck={false}
               aria-label="New variable name"
-              className="w-40 shrink-0 rounded border border-dashed border-deck-border bg-deck-panel px-2 py-1 font-mono text-xs outline-none focus:border-deck-accent"
+              aria-invalid={newError ? true : undefined}
+              className={`w-40 shrink-0 rounded border border-dashed bg-deck-panel px-2 py-1 font-mono text-xs outline-none focus:border-deck-accent ${
+                newError ? 'border-deck-status-error' : 'border-deck-border'
+              }`}
             />
             <button
               type="button"
@@ -228,6 +261,12 @@ export function VariablesPanel(): JSX.Element {
             >
               + Add
             </button>
+            </div>
+            {newError && (
+              <p role="alert" className="pl-1 text-[11px] text-deck-status-error">
+                {newError}
+              </p>
+            )}
           </div>
         </div>
       )}

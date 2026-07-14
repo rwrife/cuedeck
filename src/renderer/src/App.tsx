@@ -31,6 +31,16 @@ export default function App(): JSX.Element {
   // connects (and only after the user opts in).
   useEffect(() => initLiveControlBridge(), [])
 
+  // Best-effort flush of any debounced-but-unwritten edits when the window is
+  // about to be torn down, so the last keystroke is never lost on quit (#38).
+  useEffect(() => {
+    const onBeforeUnload = (): void => {
+      void useDeckStore.getState().flushSave()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
   return (
     <div className="h-full w-full bg-deck-bg text-deck-text">
       <StudioShell />

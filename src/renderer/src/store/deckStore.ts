@@ -16,6 +16,15 @@ import type { ReadinessFix } from '@shared/readiness'
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import type { NewDemoChoice } from '@shared/library'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
+import {
+  type SaveState,
+  initialSaveState,
+  markDirty,
+  markError,
+  markSaved,
+  markSaving,
+  needsFlush
+} from '@shared/saveStatus'
 import { move } from '@shared/reorder'
 import { BUILD_LANGUAGE } from '@shared/buildLanguage'
 import { useSettingsStore } from './settingsStore'
@@ -55,7 +64,13 @@ interface DeckState {
 
   // UI status
   loading: boolean
-  saving: boolean
+  /**
+   * Visible persistence status (#38). Replaces the old boolean `saving` so a
+   * failed write can never be presented as “Saved”, and so the shell can warn
+   * about unsaved changes. Driven by the pure state machine in
+   * `@shared/saveStatus`.
+   */
+  saveState: SaveState
   /**
    * Current workspace layout. `'edit'` is the full authoring workspace;
    * `'present'` is the compact, read-only, always-on-top Presenter Mode used
@@ -97,6 +112,14 @@ interface DeckState {
   exportDeck: (id: string) => Promise<void>
   importDeck: () => Promise<void>
   setStatusMessage: (message: string | null) => void
+
+  /**
+   * Immediately persist any pending edits, bypassing the debounce (#38). Called
+   * before closing a deck, entering Present, or shutting the app down so the
+   * last keystroke is never lost. Resolves once the write settles (success or
+   * failure); the resulting {@link DeckState.saveState} reflects the outcome.
+   */
+  flushSave: () => Promise<void>
 
   // Presenter mode (#5)
   /**
@@ -215,17 +238,47 @@ export const COPY_FLASH_MS = 1200
 export const REVEAL_VARIABLE_EVENT = 'cuedeck:reveal-variable'
 
 export const useDeckStore = create<DeckState>((set, get) => {
+  /**
+   * Perform an actual persistence write for the active deck, driving the save
+   * state machine (#38). Any rejection is caught and surfaced as an `error`
+   * state so a failed write is never reported as saved. Tracks whether new
+   * edits arrived mid-flight so a trailing keystroke stays “unsaved”.
+   */
+  async function performSave(): Promise<void> {
+    const current = get().deck
+    if (!current) return
+    set({ saveState: markSaving() })
+    const savedUpdatedAt = current.updatedAt
+    try {
+      const saved = await window.cuedeck.decks.save(current)
+      const latest = get().deck
+      // A concurrent edit replaced/mutated the deck while we were writing.
+      const stillDirty = latest !== current && latest?.updatedAt === savedUpdatedAt
+      if (latest && latest.id === current.id) {
+        set({
+          deck: { ...latest, updatedAt: saved.updatedAt },
+          saveState: markSaved(stillDirty)
+        })
+      } else {
+        set({ saveState: markSaved(false) })
+      }
+    } catch (err) {
+      set({
+        saveState: markError((err as Error)?.message ?? 'Save failed.'),
+        statusMessage: `Couldn’t save your changes: ${(err as Error)?.message ?? 'unknown error'}`
+      })
+    }
+  }
+
   /** Debounced persistence — called after any mutation. */
   function scheduleSave(): void {
     const { deck } = get()
     if (!deck) return
+    set({ saveState: markDirty() })
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(async () => {
-      const current = get().deck
-      if (!current) return
-      set({ saving: true })
-      const saved = await window.cuedeck.decks.save(current)
-      set({ saving: false, deck: { ...current, updatedAt: saved.updatedAt } })
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void performSave()
     }, 500)
   }
 
@@ -271,7 +324,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     activeCardId: null,
     focusRequest: null,
     loading: false,
-    saving: false,
+    saveState: initialSaveState,
     mode: 'edit',
     workspace: 'library',
     lastCopiedSnippetId: null,
@@ -283,7 +336,7 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     openDeck: async (id) => {
-      set({ loading: true })
+      set({ loading: true, saveState: initialSaveState })
       const loaded = await window.cuedeck.decks.load(id)
       // Route the loaded deck through the shared validator/normalizer. A deck
       // that is already valid AND at the current schema version passes through
@@ -315,7 +368,8 @@ export const useDeckStore = create<DeckState>((set, get) => {
         deck,
         activeCardId: deck.cards[0]?.id ?? null,
         workspace: modeAfterOpenDeck(),
-        mode: 'edit'
+        mode: 'edit',
+        saveState: initialSaveState
       })
     },
 
@@ -358,6 +412,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
     },
 
     closeDeck: () => {
+      // Never abandon the deck with unsaved edits still in the debounce window
+      // (#38): flush first, then tear down. `void` because callers that need to
+      // await persistence use `flushSave` directly.
+      void get().flushSave()
       // Leaving a deck always returns to the full-chrome Library; make sure we
       // don't strand the user in a tiny always-on-top presenter window (#33).
       if (get().mode !== 'edit') {
@@ -396,8 +454,21 @@ export const useDeckStore = create<DeckState>((set, get) => {
 
     setStatusMessage: (message) => set({ statusMessage: message }),
 
+    flushSave: async () => {
+      // Cancel any debounced save and write synchronously so the last edit is
+      // committed before we navigate away or exit (#38).
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+      if (!needsFlush(get().saveState)) return
+      await performSave()
+    },
+
     setMode: (mode) => {
       if (get().mode === mode) return
+      // Flush pending edits before the compact presenter takes over (#38).
+      if (mode === 'present') void get().flushSave()
       set({ mode })
       // Keep the Studio workspace in sync so the shell rail reflects the
       // presenter window state driven by hotkeys / live control (#33). Exiting
@@ -418,6 +489,8 @@ export const useDeckStore = create<DeckState>((set, get) => {
       // explicit for callers wiring raw rail clicks).
       if (!canEnterMode(target, deck !== null)) return
       const windowMode = windowModeFor(target)
+      // Flush pending edits before entering the read-only Present layout (#38).
+      if (windowMode === 'present') void get().flushSave()
       set({ workspace: target, mode: windowMode })
       // Only touch the presenter window when the window layout actually changes.
       void window.cuedeck.window.setPresenter(windowMode === 'present')

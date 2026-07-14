@@ -6,6 +6,7 @@ import { VariablesPanel } from './VariablesPanel'
 import { useDragSort } from '../hooks/useDragSort'
 import { BUILD_LANGUAGE, stepTitleFieldId } from '@shared/buildLanguage'
 import { REVEAL_VARIABLE_EVENT } from '../store/deckStore'
+import { ConfirmDeleteButton } from './ConfirmDeleteButton'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
 const SNIPPET_DND_TYPE = 'application/x-cuedeck-snippet'
@@ -84,13 +85,20 @@ export function CardEditor(): JSX.Element {
           aria-label="Step title"
           className="flex-1 border-b border-transparent bg-transparent text-2xl font-semibold outline-none focus:border-deck-border"
         />
-        <button
-          onClick={() => removeCard(card.id)}
-          className="rounded px-2 py-1 text-sm text-deck-muted transition hover:text-red-400"
+        <ConfirmDeleteButton
+          onConfirm={() => removeCard(card.id)}
           title={BUILD_LANGUAGE.step.remove}
-        >
-          Delete
-        </button>
+          restoreFocus={() => {
+            // After deleting a step, the store selects the next active card;
+            // move focus to its title so keyboard users land somewhere useful.
+            const nextId = useDeckStore.getState().activeCardId
+            if (nextId) {
+              requestAnimationFrame(() =>
+                document.getElementById(stepTitleFieldId(nextId))?.focus()
+              )
+            }
+          }}
+        />
       </div>
 
       {/* Notes */}
