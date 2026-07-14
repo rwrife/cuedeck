@@ -20,6 +20,12 @@ export const IPC = {
   getAlwaysOnTop: 'window:getAlwaysOnTop',
   setPresenter: 'window:setPresenter',
 
+  // Safe shutdown handshake (#38)
+  /** Main → renderer: flush any pending debounced edits before the window closes. */
+  appRequestFlush: 'app:requestFlush',
+  /** Renderer → main: pending edits are flushed; the window may now close. */
+  appFlushComplete: 'app:flushComplete',
+
   // Settings persistence (#8)
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',

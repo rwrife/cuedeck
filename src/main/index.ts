@@ -7,6 +7,7 @@ import { registerDeckHandlers } from './deckStore'
 import { getSettingsSync, initSettings, registerSettingsHandlers } from './settingsStore'
 import { registerLiveControlHandlers } from './liveControlStore'
 import { buildApplicationMenuTemplate, resolveWindowBackgroundColor } from './windowChrome'
+import { CloseGuard } from './closeCoordinator'
 
 const isDev = !app.isPackaged
 
@@ -25,7 +26,45 @@ let mainWindow: BrowserWindow | null = null
  */
 let prePresenterState: { bounds: Electron.Rectangle; alwaysOnTop: boolean } | null = null
 
+/**
+ * Guards window close behind a renderer flush (#38): an edit made immediately
+ * before hitting close must not be dropped by the save debounce. The first
+ * close is deferred while we ask the renderer to flush; once it acks (or a
+ * safety timeout fires) the close is allowed through.
+ */
+const closeGuard = new CloseGuard()
+
+/** How long to wait for the renderer's flush ack before closing anyway (ms). */
+const FLUSH_TIMEOUT_MS = 4000
+
+/**
+ * Ask the renderer to flush pending edits, then close the window once it acks
+ * or the safety timeout elapses. Idempotent per close attempt via the pure
+ * {@link CloseGuard} so duplicate close events and late acks are harmless.
+ */
+function flushThenClose(win: BrowserWindow): void {
+  let settled = false
+  const finish = (fromTimeout: boolean): void => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    ipcMain.removeListener(IPC.appFlushComplete, onAck)
+    const res = fromTimeout ? closeGuard.onFlushTimeout() : closeGuard.onFlushComplete()
+    if (res.shouldClose && !win.isDestroyed()) win.close()
+  }
+  const onAck = (evt: Electron.IpcMainEvent): void => {
+    if (evt.sender === win.webContents) finish(false)
+  }
+  const timer = setTimeout(() => finish(true), FLUSH_TIMEOUT_MS)
+  ipcMain.on(IPC.appFlushComplete, onAck)
+  win.webContents.send(IPC.appRequestFlush)
+}
+
 function createWindow(): void {
+  // A fresh window starts a fresh shutdown handshake (e.g. macOS re-activate
+  // after all windows were closed) so the next close still flushes first.
+  closeGuard.reset()
+
   // Match the initial window background to the saved theme so there's no
   // light-on-dark (or dark-on-light) flash before the renderer paints.
   const applied = resolveTheme(getSettingsSync().theme, nativeTheme.shouldUseDarkColors)
@@ -50,6 +89,17 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+  })
+
+  // Safe shutdown (#38): defer the first close until the renderer has flushed
+  // any pending debounced edits, so the last change is never silently lost.
+  mainWindow.on('close', (event) => {
+    const win = mainWindow
+    if (!win) return
+    const decision = closeGuard.requestClose()
+    if (decision.proceed) return
+    event.preventDefault()
+    if (decision.shouldFlush) flushThenClose(win)
   })
 
   // Open external links in the default browser, never in-app.

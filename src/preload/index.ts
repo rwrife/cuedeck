@@ -73,6 +73,25 @@ const api = {
     setPresenter: (present: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC.setPresenter, present)
   },
+  /**
+   * Safe shutdown handshake (#38). Before the window actually closes, the main
+   * process asks the renderer to flush any pending debounced edits and waits for
+   * the ack, so an edit made immediately before closing is never silently
+   * discarded. `onFlushRequest` runs the supplied flusher, then always acks
+   * (even if the flush itself fails) so shutdown can't hang.
+   */
+  app: {
+    onFlushRequest: (handler: () => Promise<void> | void): (() => void) => {
+      const listener = (): void => {
+        void Promise.resolve()
+          .then(handler)
+          .catch(() => undefined)
+          .finally(() => ipcRenderer.send(IPC.appFlushComplete))
+      }
+      ipcRenderer.on(IPC.appRequestFlush, listener)
+      return () => ipcRenderer.removeListener(IPC.appRequestFlush, listener)
+    }
+  },
   settings: {
     /** Read the full, normalized settings object. */
     get: (): Promise<Settings> => ipcRenderer.invoke(IPC.settingsGet),

@@ -45,6 +45,13 @@ export default function App(): JSX.Element {
   // prior behavior.
   useHotkeys()
 
+  // Safe shutdown (#38): when the main process is about to close the window it
+  // asks us to flush pending debounced edits first. Flush, then let preload ack.
+  useEffect(
+    () => window.cuedeck.app.onFlushRequest(() => useDeckStore.getState().flushPendingSave()),
+    []
+  )
+
   // Present toggle (F5 / Ctrl/Cmd+P), available whenever a deck is open —
   // registered here rather than in useHotkeys because it must fire even
   // while a Ctrl/Cmd modifier is held, which the copy/nav hotkeys deliberately
@@ -56,7 +63,7 @@ export default function App(): JSX.Element {
       if (!state.deck) return
       e.preventDefault()
       if (state.workspaceMode === 'present') state.exitPresent()
-      else state.enterPresent()
+      else void state.enterPresent()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)

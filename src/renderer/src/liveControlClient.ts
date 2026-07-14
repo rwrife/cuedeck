@@ -116,7 +116,7 @@ export function applyLiveCommand(message: LiveCommandMessage): LiveCommandReply 
     }
 
     case 'enterPresenter': {
-      store.enterPresent()
+      void store.enterPresent()
       return { ok: true }
     }
 

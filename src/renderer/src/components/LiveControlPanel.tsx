@@ -4,6 +4,8 @@ import { Toggle } from './ui/Toggle'
 import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import { CheckIcon, CloseIcon, SlidersIcon } from './ui/icons'
+import { useDeckStore } from '../store/deckStore'
+import { errorMessageOf } from '@shared/operations'
 
 /**
  * In-app live-control status surfaced to the renderer for the toggle/indicator.
@@ -142,6 +144,13 @@ export function LiveControlPanel(): JSX.Element | null {
         : await window.cuedeck.live.disable()
       setStatus(result)
       if (!next) setShowToken(false)
+      useDeckStore.getState().clearOperationError('live')
+    } catch (err) {
+      // Surface live-control failures as structured store state (#38) so later
+      // UI can render them; never swallow them into a silent no-op.
+      useDeckStore
+        .getState()
+        .setOperationError('live', errorMessageOf(err))
     } finally {
       setBusy(false)
     }

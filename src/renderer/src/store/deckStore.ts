@@ -13,9 +13,20 @@ import {
 import { generateId, normalizeDeck, validateDeck } from '@shared/deck'
 import { renderSnippet, collectReferencedVariables } from '@shared/variables'
 import { move } from '@shared/reorder'
-import { flushPendingSave, type PendingSaveDeps } from '@shared/pendingSave'
+import {
+  errorMessageOf,
+  makeOperationError,
+  type DeckOperation,
+  type OperationError
+} from '@shared/operations'
 import { useSettingsStore } from './settingsStore'
 import { playCopyChime } from '../lib/copySound'
+import {
+  applySavedTimestamp,
+  SaveCoordinator,
+  type SaveError,
+  type SaveStatus
+} from './saveCoordinator'
 
 /**
  * Generate a reasonably-unique id in the renderer. Delegates to the shared
@@ -33,7 +44,23 @@ interface DeckState {
 
   // UI status
   loading: boolean
-  saving: boolean
+  /**
+   * Explicit persistence status (#38). Replaces the previous fragile `saving`
+   * boolean: `idle` (nothing pending), `saving` (a write is in flight), `saved`
+   * (durably persisted), or `error` (the last write failed). Driven by the pure
+   * {@link SaveCoordinator} so a failed save can never masquerade as saved.
+   */
+  saveStatus: SaveStatus
+  /** True while there are edits not yet durably persisted. */
+  saveDirty: boolean
+  /** Structured last-save failure, or null. */
+  saveError: SaveError | null
+  /**
+   * Structured, per-operation failures surfaced to the UI so later work can
+   * render each error where it occurred (#38). Native-dialog cancellation is a
+   * neutral no-op and never populates this map.
+   */
+  errors: Partial<Record<DeckOperation, OperationError>>
   /**
    * Current Studio mode (#33): `'library'`, `'build'`, `'rehearse'`, or the
    * compact, read-only, always-on-top `'present'` layout used while running a
@@ -55,12 +82,26 @@ interface DeckState {
   openDeck: (id: string) => Promise<void>
   createDeck: (name: string) => Promise<void>
   deleteDeck: (id: string) => Promise<void>
-  closeDeck: () => void
+  closeDeck: () => Promise<void>
+
+  // Persistence control (#38)
+  /**
+   * Force any pending debounced edits to disk immediately and wait for the
+   * result. Called before closing a deck, entering Present, or app shutdown so
+   * the debounce can never silently discard the last change.
+   */
+  flushPendingSave: () => Promise<void>
+  /** Retry the last failed save (clears the error and writes now). */
+  retrySave: () => Promise<void>
 
   // Import / export
   exportDeck: (id: string) => Promise<void>
   importDeck: () => Promise<void>
   setStatusMessage: (message: string | null) => void
+  /** Record a structured failure for an operation surface (#38). */
+  setOperationError: (operation: DeckOperation, message: string) => void
+  /** Clear a previously-recorded operation failure. */
+  clearOperationError: (operation: DeckOperation) => void
 
   // Presenter mode (#5) / Studio mode navigation (#33)
   /**
@@ -71,11 +112,13 @@ interface DeckState {
    */
   selectWorkspaceMode: (mode: WorkspaceMode) => void
   /**
-   * Enter Present: switches to the compact, read-only layout and drives the
-   * main-process window side effects (compact size + always-on-top) via
-   * `window.cuedeck.window.setPresenter`. A no-op without an open deck.
+   * Enter Present: flushes pending edits first (#38), then switches to the
+   * compact, read-only layout and drives the main-process window side effects
+   * (compact size + always-on-top) via `window.cuedeck.window.setPresenter`. A
+   * no-op without an open deck; a failed pre-transition flush keeps the current
+   * mode so nothing is lost, consistent with {@link closeDeck}.
    */
-  enterPresent: () => void
+  enterPresent: () => Promise<void>
   /**
    * Exit Present back to Rehearse, restoring the prior window bounds and
    * always-on-top state via the same trusted IPC. A no-op when not currently
@@ -144,55 +187,42 @@ interface DeckState {
   addReferencedVariables: () => string[]
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
 let copyFlashTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Duration of the "Copied ✓" flash, in ms. Shared by button + hotkeys. */
 export const COPY_FLASH_MS = 1200
 
+/** Debounce window (ms) before a quiescent edit is persisted. */
+export const SAVE_DEBOUNCE_MS = 500
+
 export const useDeckStore = create<DeckState>((set, get) => {
-  /** Real dependencies for {@link flushPendingSave} — see that module for why
-   *  they're injected rather than read directly (testability without IPC). */
-  const pendingSaveDeps: PendingSaveDeps = {
-    hasPendingSave: () => saveTimer !== null,
-    cancelPendingSave: () => {
-      if (saveTimer) clearTimeout(saveTimer)
-      saveTimer = null
-    },
-    save: (deck) => window.cuedeck.decks.save(deck)
-  }
-
-  /** Debounced persistence — called after any mutation. */
-  function scheduleSave(): void {
-    const { deck } = get()
-    if (!deck) return
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(async () => {
-      const current = get().deck
-      if (!current) return
-      set({ saving: true })
-      const saved = await window.cuedeck.decks.save(current)
-      saveTimer = null
-      set({ saving: false, deck: { ...current, updatedAt: saved.updatedAt } })
-    }, 500)
-  }
-
   /**
-   * Flush the currently-open deck's pending debounced edit (if any) before it
-   * gets replaced by a different deck. Library remains reachable without
-   * closing the open deck (#33), so opening/creating another deck must not
-   * silently drop an edit still sitting inside the 500ms debounce window.
+   * Explicit, race-safe persistence (#38). The pure {@link SaveCoordinator}
+   * owns debounce timing, the idle/saving/saved/error status, flush, and retry.
+   * It always writes the *current* deck (`getDeck`) and, on completion, only
+   * stamps `updatedAt` onto the current deck via {@link applySavedTimestamp} —
+   * so a slow write can never overwrite newer in-memory edits, and a failure is
+   * surfaced instead of silently looking saved.
    */
-  async function flushOutgoingDeck(): Promise<void> {
-    await flushPendingSave(get().deck, pendingSaveDeps)
-  }
+  const saveCoordinator = new SaveCoordinator<Deck>({
+    debounceMs: SAVE_DEBOUNCE_MS,
+    save: (deck) => window.cuedeck.decks.save(deck),
+    getDeck: () => get().deck,
+    onChange: (view) =>
+      set({ saveStatus: view.status, saveDirty: view.dirty, saveError: view.error }),
+    onSaved: (savedId, updatedAt) =>
+      set((s) => {
+        const next = applySavedTimestamp(s.deck, savedId, updatedAt)
+        return next === s.deck ? {} : { deck: next }
+      })
+  })
 
-  /** Apply a mutation to the active deck, then schedule a save. */
+  /** Apply a mutation to the active deck, then schedule a debounced save. */
   function mutate(fn: (deck: Deck) => Deck): void {
     const { deck } = get()
     if (!deck) return
     set({ deck: fn(deck) })
-    scheduleSave()
+    saveCoordinator.noteEdit()
   }
 
   /**
@@ -228,7 +258,10 @@ export const useDeckStore = create<DeckState>((set, get) => {
     deck: null,
     activeCardId: null,
     loading: false,
-    saving: false,
+    saveStatus: 'idle',
+    saveDirty: false,
+    saveError: null,
+    errors: {},
     workspaceMode: 'library',
     lastCopiedSnippetId: null,
     statusMessage: null,
@@ -241,87 +274,152 @@ export const useDeckStore = create<DeckState>((set, get) => {
     openDeck: async (id) => {
       // Flush the outgoing deck's pending debounced edit first — Library is
       // reachable without closing the open deck, so switching decks must not
-      // race the save debounce and lose the last edit (#33).
-      await flushOutgoingDeck()
+      // race the save debounce and lose the last edit (#33). Best-effort: the
+      // fresh deck below establishes its own trustworthy baseline via reset().
+      await saveCoordinator.flush()
       set({ loading: true })
-      const loaded = await window.cuedeck.decks.load(id)
-      // Route the loaded deck through the shared validator/normalizer. A deck
-      // that is already valid AND at the current schema version passes through
-      // unchanged; anything older (e.g. a v1 deck with no `variables`) or loose
-      // is migrated/repaired via normalizeDeck so it renders correctly and,
-      // once touched, persists in the upgraded shape. `null` stays `null`.
-      let deck: Deck | null = null
-      if (loaded) {
-        const isCurrent = validateDeck(loaded).ok && loaded.schemaVersion === CURRENT_SCHEMA_VERSION
-        deck = isCurrent ? loaded : normalizeDeck(loaded)
+      try {
+        const loaded = await window.cuedeck.decks.load(id)
+        if (!loaded) {
+          set({ loading: false })
+          get().setOperationError('open', 'This deck could not be opened.')
+          return
+        }
+        // Route the loaded deck through the shared validator/normalizer. A deck
+        // that is already valid AND at the current schema version passes through
+        // unchanged; anything older (e.g. a v1 deck with no `variables`) or loose
+        // is migrated/repaired via normalizeDeck so it renders correctly and,
+        // once touched, persists in the upgraded shape.
+        const isCurrent =
+          validateDeck(loaded).ok && loaded.schemaVersion === CURRENT_SCHEMA_VERSION
+        const deck = isCurrent ? loaded : normalizeDeck(loaded)
+        // Fresh deck → fresh, trustworthy save baseline (never inherit the
+        // previous deck's dirty/error state).
+        saveCoordinator.reset()
+        set({
+          deck,
+          loading: false,
+          activeCardId: deck.cards[0]?.id ?? null,
+          // Opening a deck moves the Studio from Library to Build (#33).
+          workspaceMode: modeAfterOpenDeck()
+        })
+        get().clearOperationError('open')
+      } catch (err) {
+        set({ loading: false })
+        get().setOperationError('open', errorMessageOf(err))
       }
-      set({
-        deck,
-        loading: false,
-        activeCardId: deck?.cards[0]?.id ?? null,
-        // Opening a deck moves the Studio from Library to Build (#33); a
-        // failed load (deck stays null) leaves the current mode untouched.
-        workspaceMode: deck ? modeAfterOpenDeck() : get().workspaceMode
-      })
     },
 
     createDeck: async (name) => {
       // Same rationale as `openDeck`: flush any pending edit on the
-      // currently-open deck before it's replaced by the new one.
-      await flushOutgoingDeck()
-      const deck = await window.cuedeck.decks.create(name)
-      await get().refreshSummaries()
-      // Creating a deck moves the Studio from Library to Build (#33).
-      set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck() })
+      // currently-open deck before it's replaced by the new one (#33).
+      await saveCoordinator.flush()
+      try {
+        const deck = await window.cuedeck.decks.create(name)
+        await get().refreshSummaries()
+        // Fresh deck → fresh, trustworthy save baseline.
+        saveCoordinator.reset()
+        // Creating a deck moves the Studio from Library to Build (#33).
+        set({ deck, activeCardId: null, workspaceMode: modeAfterOpenDeck() })
+        get().clearOperationError('create')
+      } catch (err) {
+        get().setOperationError('create', errorMessageOf(err))
+      }
     },
 
     deleteDeck: async (id) => {
       await window.cuedeck.decks.remove(id)
       const { deck, workspaceMode } = get()
       if (deck?.id === id) {
+        // Fresh baseline so a stale write can't mark the removed deck saved (#38).
+        saveCoordinator.reset()
+        // Don't strand the user in a tiny always-on-top presenter window.
         if (workspaceMode === 'present') void window.cuedeck.window.setPresenter(false)
         set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
       }
       await get().refreshSummaries()
     },
 
-    closeDeck: () => {
+    closeDeck: async () => {
+      // Persist any pending edits before leaving the deck so the debounce can't
+      // discard the last change (#38). If that final write fails, keep the deck
+      // open so nothing is lost — the structured save error is already surfaced.
+      const view = await saveCoordinator.flush()
+      if (view.status === 'error') return
       // Leaving a deck always returns to Library; make sure we don't strand
       // the user in a tiny always-on-top presenter window.
       if (get().workspaceMode === 'present') {
         void window.cuedeck.window.setPresenter(false)
       }
+      saveCoordinator.reset()
       set({ deck: null, activeCardId: null, workspaceMode: modeAfterCloseDeck() })
     },
 
+    flushPendingSave: async () => {
+      await saveCoordinator.flush()
+    },
+
+    retrySave: async () => {
+      await saveCoordinator.retry()
+    },
+
     exportDeck: async (id) => {
-      const result = await window.cuedeck.decks.export(id)
-      if (result.error) {
-        set({ statusMessage: `Export failed: ${result.error}` })
-      } else if (result.ok && result.filePath) {
-        set({ statusMessage: `Exported to ${result.filePath}` })
+      try {
+        const result = await window.cuedeck.decks.export(id)
+        if (result.error) {
+          get().setOperationError('export', result.error)
+          set({ statusMessage: `Export failed: ${result.error}` })
+        } else if (result.ok && result.filePath) {
+          get().clearOperationError('export')
+          set({ statusMessage: `Exported to ${result.filePath}` })
+        }
+        // Silent, neutral no-op when the user simply cancelled the dialog.
+      } catch (err) {
+        const message = errorMessageOf(err)
+        get().setOperationError('export', message)
+        set({ statusMessage: `Export failed: ${message}` })
       }
-      // Silent no-op when the user simply cancelled the dialog.
     },
 
     importDeck: async () => {
-      const result = await window.cuedeck.decks.import()
-      if (result.error) {
-        set({ statusMessage: `Import failed: ${result.error}` })
-        return
+      try {
+        const result = await window.cuedeck.decks.import()
+        if (result.error) {
+          get().setOperationError('import', result.error)
+          set({ statusMessage: `Import failed: ${result.error}` })
+          return
+        }
+        if (result.ok && result.summary) {
+          await get().refreshSummaries()
+          get().clearOperationError('import')
+          set({ statusMessage: `Imported “${result.summary.name}”.` })
+        }
+        // Silent, neutral no-op when the user cancelled the dialog.
+      } catch (err) {
+        const message = errorMessageOf(err)
+        get().setOperationError('import', message)
+        set({ statusMessage: `Import failed: ${message}` })
       }
-      if (result.ok && result.summary) {
-        await get().refreshSummaries()
-        set({ statusMessage: `Imported “${result.summary.name}”.` })
-      }
-      // Silent no-op when the user cancelled the dialog.
     },
 
     setStatusMessage: (message) => set({ statusMessage: message }),
 
+    setOperationError: (operation, message) =>
+      set((s) => ({
+        errors: { ...s.errors, [operation]: makeOperationError(operation, message) }
+      })),
+
+    clearOperationError: (operation) =>
+      set((s) => {
+        if (!s.errors[operation]) return {}
+        const next = { ...s.errors }
+        delete next[operation]
+        return { errors: next }
+      }),
+
     selectWorkspaceMode: (mode) => {
       if (mode === 'present') {
-        get().enterPresent()
+        void get().enterPresent()
         return
       }
       const { workspaceMode, deck } = get()
@@ -329,10 +427,16 @@ export const useDeckStore = create<DeckState>((set, get) => {
       if (next !== workspaceMode) set({ workspaceMode: next })
     },
 
-    enterPresent: () => {
+    enterPresent: async () => {
       const { workspaceMode, deck } = get()
       const next = modeAfterEnterPresent(workspaceMode, deck !== null)
       if (next === workspaceMode) return
+      // Flush pending edits before the compact, read-only Present surface (#38).
+      // A failed flush keeps the current mode and preserves the typed save error
+      // so nothing is lost — consistent with closeDeck — instead of entering a
+      // Presenter window mid-failure.
+      const view = await saveCoordinator.flush()
+      if (view.status === 'error') return
       set({ workspaceMode: next })
       // Fire-and-forget the window side effects; the renderer layout switches
       // immediately regardless of how the OS honors resize/always-on-top.

@@ -12,6 +12,7 @@ import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import { KeyboardHint } from './ui/KeyboardHint'
 import { PageHeader } from './ui/PageHeader'
+import { saveStatusLabel } from '../lib/ui/saveStatusLabel'
 import {
   ClapperboardIcon,
   CloseIcon,
@@ -45,7 +46,8 @@ const PRIMARY_ACTION_LABEL: Partial<Record<WorkspaceMode, string>> = {
  */
 export function StudioShell(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)
-  const saving = useDeckStore((s) => s.saving)
+  const saveStatus = useDeckStore((s) => s.saveStatus)
+  const saveDirty = useDeckStore((s) => s.saveDirty)
   const workspaceMode = useDeckStore((s) => s.workspaceMode)
   const closeDeck = useDeckStore((s) => s.closeDeck)
   const exportDeck = useDeckStore((s) => s.exportDeck)
@@ -86,9 +88,20 @@ export function StudioShell(): JSX.Element {
   const primaryTarget = primaryActionMode(workspaceMode)
   const primaryLabel = primaryTarget ? PRIMARY_ACTION_LABEL[workspaceMode] : undefined
 
+  // Header status line: current mode + accurate save state (#38). The reviewed
+  // saveStatusLabel never reads "Saved" on failure and returns '' for a clean,
+  // never-edited deck — in which case we show just the mode so there's no
+  // dangling separator.
+  const saveLabel = saveStatusLabel(saveStatus, saveDirty)
+  const headerStatus = hasDeckContext
+    ? saveLabel
+      ? `${MODE_TITLE[workspaceMode]} · ${saveLabel}`
+      : MODE_TITLE[workspaceMode]
+    : undefined
+
   function activatePrimaryAction(): void {
     if (primaryTarget === 'present') {
-      enterPresent()
+      void enterPresent()
     } else if (primaryTarget) {
       selectWorkspaceMode(primaryTarget)
     }
@@ -120,11 +133,7 @@ export function StudioShell(): JSX.Element {
             ? 'Your demo cue cards + instant clipboard snippets.'
             : undefined
         }
-        status={
-          hasDeckContext
-            ? `${MODE_TITLE[workspaceMode]} · ${saving ? 'Saving…' : 'Saved'}`
-            : undefined
-        }
+        status={headerStatus}
         secondaryActions={
           hasDeckContext ? (
             <>
