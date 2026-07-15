@@ -1,206 +1,214 @@
 /**
- * Deck-readiness evaluation (#36) — the pure, DOM-free engine that runs a
- * deterministic "preflight" over a deck before the user rehearses or presents.
+ * Pure, DOM-free deck-readiness evaluator for Rehearse mode (#36).
  *
- * Like the rest of `src/shared`, this module is plain data logic with no DOM,
- * Electron, React, or Zustand dependency, so it can be unit-tested in the plain
- * Node test environment and reused identically by the app, CLI, and MCP server.
+ * Rehearse answers "am I ready to present?" by computing a deterministic
+ * preflight from the current in-memory {@link Deck} — never persisted, never
+ * mutating the deck. This module is the single source of truth for what
+ * counts as a readiness concern so the evaluator can be unit-tested without
+ * React, Zustand, or Electron, and so the Rehearse UI only has to render what
+ * this function returns.
  *
- * ## Design contract
+ * ## What's checked
  *
- * - **Derived, never persisted.** Readiness is computed on demand from the deck.
- *   Nothing here mutates the deck, and the results are not written back into the
- *   deck file — they exist only to inform the presenter.
- * - **Deterministic.** For a given deck the same warnings come out in the same
- *   stable order every time, so the results can be unit-tested and rendered
- *   without flicker. Warnings are ordered by running order (card index), then by
- *   a fixed per-card category order.
- * - **Informs, does not block.** Warnings explain a concern and point at the
- *   exact Build location that resolves them; they never prevent the user from
- *   starting Present.
+ *  - `no-steps` — the deck has no steps at all (deck-level; no single step to
+ *    link to).
+ *  - `untitled-step` — a step's title is empty/whitespace-only.
+ *  - `low-content-step` — a step has neither talking points nor any
+ *    paste-ready content with real (non-blank) text — nothing useful to say
+ *    or hand out during that beat.
+ *  - `missing-variable` — a step's paste-ready content references a
+ *    `{{variable}}` (see `@shared/variables`) that has no value in the deck's
+ *    variable map, so it would render the visible "unfilled" marker if
+ *    copied/dragged right now.
  *
- * The renderer maps each {@link ReadinessFix} onto a concrete navigation into
- * the Build workspace (focus the offending step, or open the deck variables), so
- * every warning is a one-click path to the fix.
+ * Every issue is a `'warning'`: Rehearse informs, it never blocks presenting
+ * (see the design spec's Rehearse + Feedback and Error Handling sections).
+ *
+ * ## Ordering
+ *
+ * Issues are returned in a single stable order: deck-level issues first (only
+ * ever `no-steps`, and only when there are no steps), then per step in
+ * running-order (`cardIndex`), and within a step: `untitled-step`, then
+ * `low-content-step`, then one `missing-variable` issue per referenced
+ * variable in first-seen order (matching `extractVariableNames`/
+ * `classifyVariables`). This makes the evaluator's output — and therefore any
+ * UI list built from it — deterministic across runs for the same deck.
  */
 
-import type { Deck } from './types'
-import { extractVariableNames } from './variables'
+import type { CueCard, Deck, DeckVariables } from './types'
+import { classifyVariables } from './variables'
+
+/** Discriminates the kind of readiness concern. */
+export type ReadinessIssueCode =
+  | 'no-steps'
+  | 'untitled-step'
+  | 'low-content-step'
+  | 'missing-variable'
 
 /**
- * A minimum non-whitespace character count below which a step's talking points
- * are considered "low content". A step with fewer meaningful note characters
- * than this (and no snippets to fall back on) earns a low-content warning, since
- * it will give the presenter little to say when they land on it live.
- *
- * Exported so tests and callers can reason about the threshold explicitly.
+ * Severity of a readiness issue. Only `'warning'` exists today — Rehearse
+ * issues never block Present — but the field is kept typed/explicit so a
+ * future distinct severity (e.g. a purely informational note) doesn't
+ * require reshaping every consumer.
  */
-export const LOW_CONTENT_NOTE_THRESHOLD = 12
-
-/** The category of a readiness warning. Stable, machine-readable. */
-export type ReadinessWarningKind = 'empty-title' | 'missing-variable' | 'low-content'
+export type ReadinessSeverity = 'warning'
 
 /**
- * A pointer to the exact Build location that resolves a warning. A discriminated
- * union so the renderer can navigate precisely without the evaluator knowing
- * anything about the UI:
+ * Where a "fix this" navigation from Rehearse should land focus once it's
+ * back in Build, so the concern is easy to act on immediately:
  *
- * - `step` — focus a specific step (cue card) in the Build workspace.
- * - `variable` — open the deck variables and focus a specific variable value.
+ *  - `'title'` — focus/select the step's title field (mirrors the existing
+ *    `focusCardId` "focus new content" mechanism).
+ *  - `'variables'` — expand the deck-level Variables disclosure in Build's
+ *    Advanced area (mirrors `focusCardId` with a dedicated one-shot flag).
+ *  - `null` — no single field applies (e.g. the deck has no steps yet); just
+ *    switching to Build is the whole fix.
  */
-export type ReadinessFix =
-  | { readonly target: 'step'; readonly cardId: string }
-  | { readonly target: 'variable'; readonly name: string }
+export type ReadinessFocusTarget = 'title' | 'variables' | null
 
-/** A single, human-readable readiness concern about a deck. */
-export interface ReadinessWarning {
-  /**
-   * Stable, deterministic identifier for this warning, unique within a report.
-   * Safe to use as a React key and to assert in tests. Encodes the kind plus the
-   * offending entity (card id / variable name).
-   */
-  readonly id: string
-  /** Machine-readable category. */
-  readonly kind: ReadinessWarningKind
-  /**
-   * One-line explanation of the concern, written for the presenter (no internal
-   * jargon). Explains *why* it matters, not just *what* is missing.
-   */
-  readonly message: string
-  /** Where in Build to go to resolve this warning. */
-  readonly fix: ReadinessFix
-  /**
-   * The 0-based running-order index of the step this warning relates to, or
-   * `null` for deck-wide concerns (e.g. a missing variable value). Used only for
-   * stable ordering + optional display; never persisted.
-   */
-  readonly cardIndex: number | null
+/** One deterministic, actionable readiness concern. */
+export interface ReadinessIssue {
+  code: ReadinessIssueCode
+  severity: ReadinessSeverity
+  /** Human-readable explanation of the concern, ready to display as-is. */
+  message: string
+  /** The step this concerns, or `null` for a deck-level issue (`no-steps`). */
+  cardId: string | null
+  /** Zero-based position of the step in the running order, or `-1` for a deck-level issue. */
+  cardIndex: number
+  /** Which field/area a "fix this" navigation should focus in Build. */
+  focusTarget: ReadinessFocusTarget
+  /** The unfilled variable name, present only for `missing-variable` issues. */
+  variableName?: string
+}
+
+/** Full result of evaluating a deck's readiness. */
+export interface ReadinessResult {
+  /** Every issue found, in the stable order documented above. */
+  issues: ReadinessIssue[]
+  /** Total number of steps in the deck. */
+  totalSteps: number
+  /** Steps with zero readiness issues. */
+  readyStepCount: number
+  /** Distinct steps that have at least one issue (deck-level issues excluded). */
+  stepsWithIssuesCount: number
+}
+
+/** True when `value` is empty or made up only of whitespace. */
+function isBlank(value: string): boolean {
+  return value.trim().length === 0
+}
+
+/** A step's own "untitled" / "low content" issues (order matters; see module docs). */
+function structuralIssues(card: CueCard, cardIndex: number): ReadinessIssue[] {
+  const issues: ReadinessIssue[] = []
+  const label = card.title.trim() || 'Untitled step'
+
+  if (isBlank(card.title)) {
+    issues.push({
+      code: 'untitled-step',
+      severity: 'warning',
+      message: `Step ${cardIndex + 1} has no title.`,
+      cardId: card.id,
+      cardIndex,
+      focusTarget: 'title'
+    })
+  }
+
+  const hasNotes = !isBlank(card.notes)
+  const hasUsableSnippet = card.snippets.some((s) => !isBlank(s.content))
+  if (!hasNotes && !hasUsableSnippet) {
+    issues.push({
+      code: 'low-content-step',
+      severity: 'warning',
+      message: `Step ${cardIndex + 1} (${label}) has no talking points or paste-ready content yet.`,
+      cardId: card.id,
+      cardIndex,
+      focusTarget: 'title'
+    })
+  }
+
+  return issues
+}
+
+/** One `missing-variable` issue per unfilled `{{variable}}` referenced by the step, in first-seen order. */
+function missingVariableIssues(
+  card: CueCard,
+  cardIndex: number,
+  variables: DeckVariables
+): ReadinessIssue[] {
+  const label = card.title.trim() || 'Untitled step'
+  // Reuse the shared variable engine's own reference scan/dedup by evaluating
+  // it over the step's snippet contents joined together — the same pure logic
+  // that drives the editor's "uses…" chips and copy/drag substitution, so
+  // Rehearse's notion of "missing" can never drift from what actually renders.
+  const combinedContent = card.snippets.map((s) => s.content).join('\n')
+  const { missing } = classifyVariables(combinedContent, variables)
+
+  return missing.map((name) => ({
+    code: 'missing-variable' as const,
+    severity: 'warning' as const,
+    message: `Step ${cardIndex + 1} (${label}) references {{${name}}}, which has no value.`,
+    cardId: card.id,
+    cardIndex,
+    focusTarget: 'variables' as const,
+    variableName: name
+  }))
 }
 
 /**
- * The full, derived readiness report for a deck. `ready` is a convenience flag
- * meaning "no warnings"; a deck can still be presented when `ready` is false.
+ * Compute the deterministic readiness preflight for `deck`. Pure and
+ * synchronous: never mutates `deck`, never reads/writes any persisted state.
  */
-export interface ReadinessReport {
-  /** True when the deck has zero warnings. Presenting is allowed either way. */
-  readonly ready: boolean
-  /** All warnings, in deterministic order. */
-  readonly warnings: readonly ReadinessWarning[]
-}
+export function evaluateReadiness(deck: Deck): ReadinessResult {
+  const variables = deck.variables ?? {}
 
-/** True for a string that is empty or only whitespace. */
-function isBlank(value: string | undefined): boolean {
-  return !value || value.trim().length === 0
-}
-
-/** A short, human label for a step used inside warning messages. */
-function stepLabel(index: number): string {
-  return `Step ${index + 1}`
-}
-
-/**
- * Evaluate a deck's readiness for rehearsal / presentation.
- *
- * Produces a deterministic list of warnings across three categories:
- *
- * 1. **empty-title** — a step with no title. It will show as "Untitled" live and
- *    is hard to find in the running order.
- * 2. **low-content** — a step with neither meaningful talking points nor any
- *    paste-ready content, so there is nothing to say or paste when you land on it.
- * 3. **missing-variable** — a `{{variable}}` referenced by a snippet whose deck
- *    value is unset/blank, so it will paste a visible ⟦placeholder⟧ marker live.
- *
- * Ordering: warnings are grouped by running order (card index), and within a
- * card by the fixed category order above; deck-wide missing-variable warnings
- * (a variable can be referenced by several steps) are attributed to the first
- * step that references them so they sit next to where they bite. The function is
- * pure and never mutates `deck`.
- */
-export function evaluateReadiness(deck: Deck): ReadinessReport {
-  const warnings: ReadinessWarning[] = []
-  const values = deck.variables ?? {}
-
-  // Track missing variables we've already reported so a variable referenced by
-  // several steps is surfaced exactly once, attributed to its first use.
-  const reportedMissingVars = new Set<string>()
-
-  deck.cards.forEach((card, index) => {
-    // 1. Empty title.
-    if (isBlank(card.title)) {
-      warnings.push({
-        id: `empty-title:${card.id}`,
-        kind: 'empty-title',
-        message: `${stepLabel(index)} has no title, so it will show as “Untitled” and be hard to find in your running order.`,
-        fix: { target: 'step', cardId: card.id },
-        cardIndex: index
-      })
+  if (deck.cards.length === 0) {
+    return {
+      issues: [
+        {
+          code: 'no-steps',
+          severity: 'warning',
+          message: 'This deck has no steps yet — add one in Build before presenting.',
+          cardId: null,
+          cardIndex: -1,
+          focusTarget: null
+        }
+      ],
+      totalSteps: 0,
+      readyStepCount: 0,
+      stepsWithIssuesCount: 0
     }
+  }
 
-    // 2. Low content: nothing meaningful to say and nothing to paste.
-    const noteChars = card.notes.trim().length
-    const hasSnippets = card.snippets.length > 0
-    if (!hasSnippets && noteChars < LOW_CONTENT_NOTE_THRESHOLD) {
-      warnings.push({
-        id: `low-content:${card.id}`,
-        kind: 'low-content',
-        message: `${stepLabel(index)} has little talking points and no paste-ready content, so there will be nothing to say or paste when you reach it.`,
-        fix: { target: 'step', cardId: card.id },
-        cardIndex: index
-      })
-    }
+  const issues: ReadinessIssue[] = []
+  let stepsWithIssuesCount = 0
 
-    // 3. Missing variable values referenced by this step's snippets. Attribute
-    //    the first sighting to this step so the fix links to a real location.
-    for (const snippet of card.snippets) {
-      for (const name of extractVariableNames(snippet.content)) {
-        if (reportedMissingVars.has(name)) continue
-        if (!isBlank(values[name])) continue
-        reportedMissingVars.add(name)
-        warnings.push({
-          id: `missing-variable:${name}`,
-          kind: 'missing-variable',
-          message: `Variable “${name}” (used in ${stepLabel(index)}) has no value, so it will paste a visible ⟦${name}⟧ placeholder instead of real text.`,
-          fix: { target: 'variable', name },
-          cardIndex: index
-        })
-      }
-    }
+  deck.cards.forEach((card, cardIndex) => {
+    const cardIssues = [
+      ...structuralIssues(card, cardIndex),
+      ...missingVariableIssues(card, cardIndex, variables)
+    ]
+    if (cardIssues.length > 0) stepsWithIssuesCount += 1
+    issues.push(...cardIssues)
   })
 
-  // Stable sort by running order, then by a fixed category order within a card.
-  const kindOrder: Record<ReadinessWarningKind, number> = {
-    'empty-title': 0,
-    'low-content': 1,
-    'missing-variable': 2
+  return {
+    issues,
+    totalSteps: deck.cards.length,
+    readyStepCount: deck.cards.length - stepsWithIssuesCount,
+    stepsWithIssuesCount
   }
-  const ordered = warnings
-    .map((w, i) => ({ w, i }))
-    .sort((a, b) => {
-      const ai = a.w.cardIndex ?? Number.MAX_SAFE_INTEGER
-      const bi = b.w.cardIndex ?? Number.MAX_SAFE_INTEGER
-      if (ai !== bi) return ai - bi
-      const ak = kindOrder[a.w.kind]
-      const bk = kindOrder[b.w.kind]
-      if (ak !== bk) return ak - bk
-      return a.i - b.i // preserve first-seen order for ties (e.g. two vars)
-    })
-    .map(({ w }) => w)
-
-  return { ready: ordered.length === 0, warnings: ordered }
 }
 
-/**
- * Count warnings by kind. Small helper for summary UIs ("2 steps, 1 variable")
- * and for asserting shape in tests without walking the array.
- */
-export function summarizeReadiness(
-  report: ReadinessReport
-): Record<ReadinessWarningKind, number> {
-  const counts: Record<ReadinessWarningKind, number> = {
-    'empty-title': 0,
-    'low-content': 0,
-    'missing-variable': 0
+/** Convenience: issues for a single step, keyed for O(1) lookup by the UI. */
+export function groupIssuesByCard(issues: readonly ReadinessIssue[]): Map<string, ReadinessIssue[]> {
+  const byCard = new Map<string, ReadinessIssue[]>()
+  for (const issue of issues) {
+    if (!issue.cardId) continue
+    const existing = byCard.get(issue.cardId)
+    if (existing) existing.push(issue)
+    else byCard.set(issue.cardId, [issue])
   }
-  for (const w of report.warnings) counts[w.kind] += 1
-  return counts
+  return byCard
 }

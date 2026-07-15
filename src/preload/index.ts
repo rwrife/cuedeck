@@ -2,12 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type {
   Deck,
-  DeckActionResult,
   DeckSummary,
+  DeleteResult,
+  DuplicateResult,
   ExportResult,
-  ImportResult
+  ImportResult,
+  RenameResult
 } from '../shared/types'
-import type { NewDemoChoice } from '../shared/library'
 import type { Settings } from '../shared/settings'
 import type { LiveState } from '../shared/liveControl'
 
@@ -63,15 +64,15 @@ const api = {
     list: (): Promise<DeckSummary[]> => ipcRenderer.invoke(IPC.deckList),
     load: (id: string): Promise<Deck | null> => ipcRenderer.invoke(IPC.deckLoad, id),
     save: (deck: Deck): Promise<Deck> => ipcRenderer.invoke(IPC.deckSave, deck),
-    create: (name: string, template?: NewDemoChoice): Promise<Deck> =>
-      ipcRenderer.invoke(IPC.deckCreate, name, template),
-    remove: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC.deckDelete, id),
-    rename: (id: string, name: string): Promise<DeckActionResult> =>
-      ipcRenderer.invoke(IPC.deckRename, id, name),
-    duplicate: (id: string): Promise<DeckActionResult> =>
-      ipcRenderer.invoke(IPC.deckDuplicate, id),
+    create: (name: string): Promise<Deck> => ipcRenderer.invoke(IPC.deckCreate, name),
+    remove: (id: string): Promise<DeleteResult> => ipcRenderer.invoke(IPC.deckDelete, id),
     export: (id: string): Promise<ExportResult> => ipcRenderer.invoke(IPC.deckExport, id),
-    import: (): Promise<ImportResult> => ipcRenderer.invoke(IPC.deckImport)
+    import: (): Promise<ImportResult> => ipcRenderer.invoke(IPC.deckImport),
+    /** Rename a deck in place (#34); never a native dialog, so always ok/error. */
+    rename: (id: string, name: string): Promise<RenameResult> =>
+      ipcRenderer.invoke(IPC.deckRename, id, name),
+    /** Duplicate a deck (#34), producing a new, independently-named copy. */
+    duplicate: (id: string): Promise<DuplicateResult> => ipcRenderer.invoke(IPC.deckDuplicate, id)
   },
   window: {
     toggleAlwaysOnTop: (): Promise<boolean> => ipcRenderer.invoke(IPC.toggleAlwaysOnTop),
@@ -84,6 +85,25 @@ const api = {
      */
     setPresenter: (present: boolean): Promise<boolean> =>
       ipcRenderer.invoke(IPC.setPresenter, present)
+  },
+  /**
+   * Safe shutdown handshake (#38). Before the window actually closes, the main
+   * process asks the renderer to flush any pending debounced edits and waits for
+   * the ack, so an edit made immediately before closing is never silently
+   * discarded. `onFlushRequest` runs the supplied flusher, then always acks
+   * (even if the flush itself fails) so shutdown can't hang.
+   */
+  app: {
+    onFlushRequest: (handler: () => Promise<void> | void): (() => void) => {
+      const listener = (): void => {
+        void Promise.resolve()
+          .then(handler)
+          .catch(() => undefined)
+          .finally(() => ipcRenderer.send(IPC.appFlushComplete))
+      }
+      ipcRenderer.on(IPC.appRequestFlush, listener)
+      return () => ipcRenderer.removeListener(IPC.appRequestFlush, listener)
+    }
   },
   settings: {
     /** Read the full, normalized settings object. */

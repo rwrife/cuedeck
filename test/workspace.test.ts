@@ -1,81 +1,112 @@
 import { describe, it, expect } from 'vitest'
 import {
   WORKSPACE_MODES,
-  WORKSPACE_MODE_INFO,
-  canEnterMode,
-  isDeckSpecificMode,
+  isModeAvailable,
   modeAfterCloseDeck,
+  modeAfterEnterPresent,
   modeAfterExitPresent,
   modeAfterOpenDeck,
-  resolveModeRequest,
-  windowModeFor
+  primaryActionMode,
+  requiresOpenDeck,
+  resolveModeSelection
 } from '../src/shared/workspace'
 
-describe('workspace: mode vocabulary', () => {
-  it('lists the four Studio modes in rail order', () => {
+describe('workspace: mode list', () => {
+  it('defines the four Studio modes in Library → Build → Rehearse → Present order', () => {
     expect(WORKSPACE_MODES).toEqual(['library', 'build', 'rehearse', 'present'])
   })
+})
 
-  it('has matching, ordered metadata for every mode', () => {
-    expect(WORKSPACE_MODE_INFO.map((i) => i.mode)).toEqual([...WORKSPACE_MODES])
-    for (const info of WORKSPACE_MODE_INFO) {
-      expect(info.label.length).toBeGreaterThan(0)
-      expect(info.hint.length).toBeGreaterThan(0)
-    }
+describe('workspace: requiresOpenDeck', () => {
+  it('Library never requires an open deck', () => {
+    expect(requiresOpenDeck('library')).toBe(false)
   })
 
-  it('marks only Library as always-available', () => {
-    expect(isDeckSpecificMode('library')).toBe(false)
-    expect(isDeckSpecificMode('build')).toBe(true)
-    expect(isDeckSpecificMode('rehearse')).toBe(true)
-    expect(isDeckSpecificMode('present')).toBe(true)
-    // Metadata agrees.
-    for (const info of WORKSPACE_MODE_INFO) {
-      expect(info.deckSpecific).toBe(isDeckSpecificMode(info.mode))
-    }
+  it('Build, Rehearse, and Present all require an open deck', () => {
+    expect(requiresOpenDeck('build')).toBe(true)
+    expect(requiresOpenDeck('rehearse')).toBe(true)
+    expect(requiresOpenDeck('present')).toBe(true)
   })
 })
 
-describe('workspace: entry guards', () => {
-  it('always allows the Library', () => {
-    expect(canEnterMode('library', false)).toBe(true)
-    expect(canEnterMode('library', true)).toBe(true)
+describe('workspace: isModeAvailable', () => {
+  it('Library is available with or without an open deck', () => {
+    expect(isModeAvailable('library', false)).toBe(true)
+    expect(isModeAvailable('library', true)).toBe(true)
   })
 
-  it('gates deck-specific modes behind an open deck', () => {
-    for (const mode of ['build', 'rehearse', 'present'] as const) {
-      expect(canEnterMode(mode, false)).toBe(false)
-      expect(canEnterMode(mode, true)).toBe(true)
-    }
+  it('Build/Rehearse/Present are unavailable without an open deck', () => {
+    expect(isModeAvailable('build', false)).toBe(false)
+    expect(isModeAvailable('rehearse', false)).toBe(false)
+    expect(isModeAvailable('present', false)).toBe(false)
   })
 
-  it('collapses illegal requests back to the Library', () => {
-    expect(resolveModeRequest('build', false)).toBe('library')
-    expect(resolveModeRequest('present', false)).toBe('library')
-    expect(resolveModeRequest('build', true)).toBe('build')
-    expect(resolveModeRequest('library', false)).toBe('library')
+  it('Build/Rehearse/Present become available once a deck is open', () => {
+    expect(isModeAvailable('build', true)).toBe(true)
+    expect(isModeAvailable('rehearse', true)).toBe(true)
+    expect(isModeAvailable('present', true)).toBe(true)
   })
 })
 
-describe('workspace: lifecycle transitions', () => {
-  it('opening a deck lands in Build', () => {
+describe('workspace: resolveModeSelection (mode-rail navigation guard)', () => {
+  it('switches to the requested mode when it is available', () => {
+    expect(resolveModeSelection('build', 'library', true)).toBe('build')
+  })
+
+  it('stays on the current mode when the target requires a deck that is not open', () => {
+    expect(resolveModeSelection('build', 'library', false)).toBe('library')
+    expect(resolveModeSelection('present', 'build', false)).toBe('build')
+  })
+
+  it('always allows switching to Library regardless of deck state', () => {
+    expect(resolveModeSelection('library', 'build', true)).toBe('library')
+    expect(resolveModeSelection('library', 'build', false)).toBe('library')
+  })
+})
+
+describe('workspace: modeAfterOpenDeck / modeAfterCloseDeck', () => {
+  it('opening or creating a deck lands on Build', () => {
     expect(modeAfterOpenDeck()).toBe('build')
   })
 
-  it('closing a deck returns to Library', () => {
+  it('closing the active deck returns to Library', () => {
     expect(modeAfterCloseDeck()).toBe('library')
-  })
-
-  it('exiting Present returns to Rehearse', () => {
-    expect(modeAfterExitPresent()).toBe('rehearse')
   })
 })
 
-describe('workspace: window mode mapping', () => {
-  it('only Present uses the compact presenter window', () => {
-    expect(windowModeFor('present')).toBe('present')
-    expect(windowModeFor('library')).toBe('edit')
-    expect(windowModeFor('build')).toBe('edit')
-    expect(windowModeFor('rehearse')).toBe('edit')
+describe('workspace: modeAfterEnterPresent', () => {
+  it('enters Present when a deck is open', () => {
+    expect(modeAfterEnterPresent('rehearse', true)).toBe('present')
+    expect(modeAfterEnterPresent('build', true)).toBe('present')
+  })
+
+  it('is a no-op without an open deck', () => {
+    expect(modeAfterEnterPresent('library', false)).toBe('library')
+  })
+})
+
+describe('workspace: modeAfterExitPresent', () => {
+  it('returns to Rehearse when currently presenting', () => {
+    expect(modeAfterExitPresent('present')).toBe('rehearse')
+  })
+
+  it('is a no-op when not currently presenting', () => {
+    expect(modeAfterExitPresent('build')).toBe('build')
+    expect(modeAfterExitPresent('library')).toBe('library')
+  })
+})
+
+describe('workspace: primaryActionMode (one clear next action per mode)', () => {
+  it('Build’s primary next action is Rehearse', () => {
+    expect(primaryActionMode('build')).toBe('rehearse')
+  })
+
+  it('Rehearse’s primary next action is Present', () => {
+    expect(primaryActionMode('rehearse')).toBe('present')
+  })
+
+  it('Library and Present have no single next-mode action', () => {
+    expect(primaryActionMode('library')).toBeNull()
+    expect(primaryActionMode('present')).toBeNull()
   })
 })

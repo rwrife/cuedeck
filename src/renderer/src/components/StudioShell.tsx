@@ -1,152 +1,283 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
-import { isPresenterToggleKey } from '@shared/presenter'
-import { saveStatusLabel } from '@shared/saveStatus'
-import { WORKSPACE_MODE_INFO, type WorkspaceMode } from '@shared/workspace'
+import { primaryActionMode, type WorkspaceMode } from '@shared/workspace'
 import { ModeRail } from './ModeRail'
-import { DeckPicker } from './DeckPicker'
-import { BuildWorkspace } from './BuildWorkspace'
-import { RehearseWorkspace } from './RehearseWorkspace'
-import { PresenterView } from './PresenterView'
+import { Library } from './Library'
+import { DeckWorkspace } from './DeckWorkspace'
+import { RehearseView } from './RehearseView'
+import { OPEN_COMMAND_PALETTE_EVENT } from './CommandPalette'
+import { OPEN_SETTINGS_EVENT } from './SettingsModal'
+import { OPEN_LIVE_CONTROL_EVENT } from './LiveControlPanel'
+import { OPEN_BUILD_ADVANCED_EVENT } from './BuildAdvancedPanel'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { KeyboardHint } from './ui/KeyboardHint'
+import { PageHeader } from './ui/PageHeader'
+import { Dialog } from './ui/Dialog'
+import { saveStatusLabel } from '../lib/ui/saveStatusLabel'
+import {
+  ClapperboardIcon,
+  CloseIcon,
+  MoreIcon,
+  PinIcon,
+  SearchIcon,
+  SettingsIcon,
+  SlidersIcon
+} from './ui/icons'
 
-/** Look up the human label + hint for the active workspace mode. */
-function modeInfo(mode: WorkspaceMode): (typeof WORKSPACE_MODE_INFO)[number] {
-  return WORKSPACE_MODE_INFO.find((i) => i.mode === mode) ?? WORKSPACE_MODE_INFO[0]
+const MODE_TITLE: Record<WorkspaceMode, string> = {
+  library: 'Library',
+  build: 'Build',
+  rehearse: 'Rehearse',
+  present: 'Present'
+}
+
+const PRIMARY_ACTION_LABEL: Partial<Record<WorkspaceMode, string>> = {
+  build: 'Rehearse',
+  rehearse: 'Start Presenting'
 }
 
 /**
- * The primary "next action" surfaced in the shared page header for each mode,
- * so there is always one clear next step (acceptance criteria). Returns null
- * when the mode has no single obvious next action (e.g. an empty Library).
- */
-function usePrimaryAction(): { label: string; onClick: () => void; hint: string } | null {
-  const workspace = useDeckStore((s) => s.workspace)
-  const hasDeck = useDeckStore((s) => s.deck !== null)
-  const setWorkspace = useDeckStore((s) => s.setWorkspace)
-
-  if (!hasDeck) return null
-
-  switch (workspace) {
-    case 'build':
-      return {
-        label: 'Rehearse ▶︎',
-        hint: 'Practice the running order',
-        onClick: () => setWorkspace('rehearse')
-      }
-    case 'rehearse':
-      return {
-        label: 'Present ▶︎',
-        hint: 'Start the compact, always-on-top demo view (F5)',
-        onClick: () => setWorkspace('present')
-      }
-    default:
-      return null
-  }
-}
-
-/**
- * The Studio shell (#33): the app frame that hosts the four workspace modes.
+ * The persistent CueDeck Studio shell (#33): brand mark + mode rail up top,
+ * a shared page header with the current context and one primary next action,
+ * and the active mode's content below.
  *
- * Layout:
- *  - a persistent, accessible mode rail (Library / Build / Rehearse / Present)
- *  - a shared page header showing the deck name, the active mode, and one
- *    primary next action
- *  - the active workspace pane
- *
- * The Present workspace is special: it renders the compact, always-on-top
- * presenter window on its own (no rail/header) so it can float over a demo
- * target. Every other mode uses the full shell chrome. The shell stays usable
- * at the 640×480 minimum window and common text-scaling levels.
+ * Present is intentionally *not* one of this shell's content branches — it
+ * renders as its own compact, chrome-free surface (see `App`) so it can
+ * become the reduced "focused delivery" shell the design calls for. This
+ * component only ever shows Library, Build, or Rehearse.
  */
 export function StudioShell(): JSX.Element {
   const deck = useDeckStore((s) => s.deck)
-  const workspace = useDeckStore((s) => s.workspace)
-  const saveState = useDeckStore((s) => s.saveState)
+  const saveStatus = useDeckStore((s) => s.saveStatus)
+  const saveDirty = useDeckStore((s) => s.saveDirty)
+  const workspaceMode = useDeckStore((s) => s.workspaceMode)
   const closeDeck = useDeckStore((s) => s.closeDeck)
-  const primary = usePrimaryAction()
+  const exportDeck = useDeckStore((s) => s.exportDeck)
+  const selectWorkspaceMode = useDeckStore((s) => s.selectWorkspaceMode)
+  const enterPresent = useDeckStore((s) => s.enterPresent)
+  const closeBlocked = useDeckStore((s) => s.closeBlocked)
+  const saveError = useDeckStore((s) => s.saveError)
+  const retrySave = useDeckStore((s) => s.retrySave)
+  const discardAndClose = useDeckStore((s) => s.discardAndClose)
+  const dismissCloseBlocked = useDeckStore((s) => s.dismissCloseBlocked)
 
-  // Presenter Mode toggle (F5 / Ctrl/Cmd+P), available whenever a deck is open.
-  // Registered here so it fires even while a Ctrl/Cmd modifier is held.
+  const [pinned, setPinned] = useState(false)
+  const [liveActive, setLiveActive] = useState(false)
+
+  const hasDeckContext = deck !== null && workspaceMode !== 'library'
+
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent): void {
-      if (!useDeckStore.getState().deck) return
-      if (isPresenterToggleKey(e)) {
-        e.preventDefault()
-        const store = useDeckStore.getState()
-        if (store.workspace === 'present') store.exitPresent()
-        else store.setWorkspace('present')
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.cuedeck.window.getAlwaysOnTop().then(setPinned)
   }, [])
 
-  // Present renders the compact floating window without the shell chrome.
-  if (workspace === 'present' && deck) {
-    return <PresenterView />
+  // Reflect the live-control active state on the header button. Poll lightly
+  // so the indicator stays in sync when the panel enables/revokes the bridge.
+  useEffect(() => {
+    let alive = true
+    function sync(): void {
+      window.cuedeck.live.getStatus().then((s) => {
+        if (alive) setLiveActive(s.enabled)
+      })
+    }
+    sync()
+    const id = window.setInterval(sync, 2000)
+    return () => {
+      alive = false
+      window.clearInterval(id)
+    }
+  }, [])
+
+  async function togglePin(): Promise<void> {
+    const next = await window.cuedeck.window.toggleAlwaysOnTop()
+    setPinned(next)
   }
 
-  const info = modeInfo(workspace)
+  const primaryTarget = primaryActionMode(workspaceMode)
+  const primaryLabel = primaryTarget ? PRIMARY_ACTION_LABEL[workspaceMode] : undefined
+
+  // Header status line: current mode + accurate save state (#38). The reviewed
+  // saveStatusLabel never reads "Saved" on failure and returns '' for a clean,
+  // never-edited deck — in which case we show just the mode so there's no
+  // dangling separator.
+  const saveLabel = saveStatusLabel(saveStatus, saveDirty)
+  const headerStatus = hasDeckContext
+    ? saveLabel
+      ? `${MODE_TITLE[workspaceMode]} · ${saveLabel}`
+      : MODE_TITLE[workspaceMode]
+    : undefined
+
+  function activatePrimaryAction(): void {
+    if (primaryTarget === 'present') {
+      void enterPresent()
+    } else if (primaryTarget) {
+      selectWorkspaceMode(primaryTarget)
+    }
+  }
+
+  // Retry the failed save, then close only if it actually succeeded (#38). A
+  // still-failing save re-flags the block, so the recovery prompt stays up
+  // rather than pretending the deck closed cleanly.
+  async function retryAndClose(): Promise<void> {
+    await retrySave()
+    if (useDeckStore.getState().saveStatus !== 'error') {
+      await closeDeck()
+    }
+  }
 
   return (
-    <div className="flex h-full w-full">
-      <ModeRail />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Shared page header: deck + active mode + one primary next action. */}
-        <header className="flex items-center justify-between gap-3 border-b border-deck-border bg-deck-panel px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-3">
-            {deck ? (
-              <button
-                onClick={closeDeck}
-                className="rounded px-2 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-                title="Close deck and return to the Library"
-              >
-                ← Library
-              </button>
-            ) : null}
-            <div className="min-w-0">
-              <h1 className="truncate font-semibold" aria-live="polite">
-                {deck ? deck.name : 'Library'}
-                <span className="ml-2 text-sm font-normal text-deck-muted">{info.label}</span>
-              </h1>
-            </div>
-            {deck ? (
-              <span
-                role="status"
-                aria-live="polite"
-                className={
-                  saveState.status === 'error'
-                    ? 'text-xs font-medium text-deck-status-error'
-                    : 'text-xs text-deck-muted'
-                }
-                title={saveState.error ?? undefined}
-              >
-                {saveStatusLabel(saveState)}
-              </span>
-            ) : null}
-          </div>
-          {primary ? (
-            <button
-              onClick={primary.onClick}
-              className="shrink-0 rounded-lg bg-deck-accent px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-90"
-              title={primary.hint}
-            >
-              {primary.label}
-            </button>
-          ) : null}
-        </header>
-
-        {/* Active workspace pane. */}
-        <div id="studio-pane" role="tabpanel" className="min-h-0 flex-1">
-          {!deck || workspace === 'library' ? (
-            <DeckPicker />
-          ) : workspace === 'rehearse' ? (
-            <RehearseWorkspace />
-          ) : (
-            <BuildWorkspace />
-          )}
+    <div className="flex h-full flex-col">
+      {/* Brand + persistent mode rail + global Settings */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-deck-border bg-deck-panel px-4 py-2">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="flex shrink-0 items-center gap-2 font-semibold">
+            <ClapperboardIcon />
+            CueDeck
+          </span>
+          <ModeRail />
         </div>
+        <IconButton
+          label="Open settings"
+          icon={<SettingsIcon />}
+          onClick={() => window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT))}
+        />
       </div>
+
+      {/* Shared page header: current context + one primary next action */}
+      <PageHeader
+        title={deck && workspaceMode !== 'library' ? deck.name : MODE_TITLE[workspaceMode]}
+        subtitle={
+          workspaceMode === 'library'
+            ? 'Your demo cue cards + instant clipboard snippets.'
+            : undefined
+        }
+        status={headerStatus}
+        secondaryActions={
+          hasDeckContext ? (
+            workspaceMode === 'build' ? (
+              // Build (#35 guided Build workspace): keep Search — it's core to
+              // navigating the running order — visible and prominent, but tuck
+              // the technical/infrequent actions (export, live control, pin)
+              // behind one "Build tools" disclosure so they never compete with
+              // the single primary next action (Rehearse).
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SearchIcon />}
+                  onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+                  title="Search steps and paste-ready content (/ or Ctrl/Cmd+K)"
+                >
+                  Search
+                  <KeyboardHint keys={['/']} />
+                </Button>
+                <IconButton
+                  label="Build tools — export, live control, keep on top"
+                  icon={<MoreIcon />}
+                  size="sm"
+                  onClick={() => window.dispatchEvent(new Event(OPEN_BUILD_ADVANCED_EVENT))}
+                />
+                <IconButton
+                  label="Close deck (back to Library)"
+                  icon={<CloseIcon />}
+                  size="sm"
+                  onClick={closeDeck}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SearchIcon />}
+                  onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+                  title="Search cards and snippets (/ or Ctrl/Cmd+K)"
+                >
+                  Search
+                  <KeyboardHint keys={['/']} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deck && exportDeck(deck.id)}
+                  title="Export this deck to a .json file"
+                >
+                  Export
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<SlidersIcon />}
+                  active={liveActive}
+                  activeTone="success"
+                  onClick={() => window.dispatchEvent(new Event(OPEN_LIVE_CONTROL_EVENT))}
+                  title="Live Control — let an MCP client drive this demo (opt-in, loopback-only)"
+                >
+                  Live
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<PinIcon />}
+                  active={pinned}
+                  onClick={togglePin}
+                  title="Keep window on top during your demo"
+                >
+                  {pinned ? 'Pinned' : 'Pin on top'}
+                </Button>
+                <IconButton
+                  label="Close deck (back to Library)"
+                  icon={<CloseIcon />}
+                  size="sm"
+                  onClick={closeDeck}
+                />
+              </>
+            )
+          ) : undefined
+        }
+        primaryAction={
+          primaryLabel && (
+            <Button variant="primary" onClick={activatePrimaryAction}>
+              {primaryLabel}
+            </Button>
+          )
+        }
+      />
+
+      {/* Active mode content */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {workspaceMode === 'library' && <Library />}
+        {workspaceMode === 'build' && deck && <DeckWorkspace />}
+        {workspaceMode === 'rehearse' && deck && <RehearseView />}
+      </div>
+
+      {/* Save-blocked close recovery (#38): the deck couldn't be saved, so it
+          wasn't closed. Make the authority explicit — retry, or knowingly
+          discard the unsaved changes — instead of a silent no-op or pretending
+          the data was saved. */}
+      <Dialog open={closeBlocked} onClose={dismissCloseBlocked} labelledBy="close-blocked-title">
+        <div className="px-5 py-4">
+          <h2 id="close-blocked-title" className="text-lg font-semibold text-deck-text">
+            Couldn&rsquo;t save your changes
+          </h2>
+          <p className="mt-2 text-sm text-deck-muted">
+            The deck wasn&rsquo;t closed because your latest changes couldn&rsquo;t be saved
+            {saveError ? <> ({saveError.message})</> : null}. Retry the save, or discard the
+            unsaved changes and close anyway.
+          </p>
+        </div>
+        <footer className="flex flex-wrap justify-end gap-2 border-t border-deck-border px-5 py-3">
+          <Button variant="ghost" onClick={dismissCloseBlocked}>
+            Keep editing
+          </Button>
+          <Button variant="danger" onClick={() => void discardAndClose()}>
+            Discard &amp; close
+          </Button>
+          <Button variant="primary" onClick={() => void retryAndClose()}>
+            Retry save
+          </Button>
+        </footer>
+      </Dialog>
     </div>
   )
 }

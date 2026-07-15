@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { isTypingTarget } from '@shared/hotkeys'
 import { kindLabel, searchDeck, type SearchResult } from '@shared/search'
-import { useFocusTrap } from '../hooks/useFocusTrap'
+import { SearchIcon } from './ui/icons'
 
 /**
  * Custom DOM event other components can dispatch to open the palette (e.g. a
@@ -38,9 +38,10 @@ export function CommandPalette(): JSX.Element | null {
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
-
-  // Trap focus inside the palette while open and restore it on close (#39).
-  const trapRef = useFocusTrap<HTMLDivElement>(open && !!deck)
+  // Whatever was focused when the palette opened, so focus is restored there
+  // when it closes (#39) — a keyboard user who opened search with `/` lands
+  // back where they were instead of at the top of the document.
+  const previouslyFocused = useRef<HTMLElement | null>(null)
 
   const results = useMemo(() => searchDeck(deck, query), [deck, query])
 
@@ -86,9 +87,15 @@ export function CommandPalette(): JSX.Element | null {
     }
   }, [])
 
-  // Focus the input each time the palette opens.
+  // Focus the input each time the palette opens, and restore focus to the
+  // previously focused element when it closes (#39 focus restoration).
   useEffect(() => {
-    if (open) inputRef.current?.focus()
+    if (!open) return
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    inputRef.current?.focus()
+    return () => {
+      previouslyFocused.current?.focus?.()
+    }
   }, [open])
 
   // Keep the selected index in range as the result set changes.
@@ -151,7 +158,6 @@ export function CommandPalette(): JSX.Element | null {
       role="presentation"
     >
       <div
-        ref={trapRef}
         className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-deck-border bg-deck-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
@@ -161,11 +167,10 @@ export function CommandPalette(): JSX.Element | null {
         {/* Search field */}
         <div className="flex items-center gap-2 border-b border-deck-border px-3 py-2.5">
           <span className="text-deck-muted" aria-hidden="true">
-            🔍
+            <SearchIcon />
           </span>
           <input
             ref={inputRef}
-            data-autofocus
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)

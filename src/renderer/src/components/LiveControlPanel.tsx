@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Dialog } from './ui/Dialog'
+import { Toggle } from './ui/Toggle'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { StatusBanner } from './ui/StatusBanner'
+import { CheckIcon, CloseIcon, SlidersIcon } from './ui/icons'
+import { useDeckStore } from '../store/deckStore'
+import { errorMessageOf } from '@shared/operations'
 
 /**
  * In-app live-control status surfaced to the renderer for the toggle/indicator.
@@ -18,42 +26,10 @@ interface LiveControlStatus {
 
 /**
  * Custom DOM event any component can dispatch to open the Live Control panel
- * (e.g. the "🎛 Live" button in the workspace header). Mirrors the
+ * (e.g. the "Live" button in the workspace header). Mirrors the
  * settings-modal / command-palette pattern so entry points stay decoupled.
  */
 export const OPEN_LIVE_CONTROL_EVENT = 'cuedeck:open-live-control'
-
-/** An accessible on/off toggle switch (matches the SettingsModal toggle). */
-function Toggle({
-  checked,
-  onChange,
-  ariaLabel,
-  disabled
-}: {
-  checked: boolean
-  onChange: (next: boolean) => void
-  ariaLabel: string
-  disabled?: boolean
-}): JSX.Element {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? 'bg-deck-accent' : 'bg-deck-card border border-deck-border'
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-          checked ? 'translate-x-6' : 'translate-x-1'
-        }`}
-      />
-    </button>
-  )
-}
 
 /** A read-only value row with a copy button (used for host:port and token). */
 function CopyRow({
@@ -88,13 +64,15 @@ function CopyRow({
         >
           {shown}
         </code>
-        <button
-          onClick={() => void copy()}
-          className="shrink-0 rounded px-2 py-1 text-xs text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-          title={`Copy ${label}`}
-        >
-          {copied ? 'Copied ✓' : 'Copy'}
-        </button>
+        <Button variant="ghost" size="sm" onClick={() => void copy()} title={`Copy ${label}`}>
+          {copied ? (
+            <>
+              <CheckIcon /> Copied
+            </>
+          ) : (
+            'Copy'
+          )}
+        </Button>
       </div>
     </div>
   )
@@ -133,12 +111,19 @@ function configJson(status: LiveControlStatus): string {
  * The security model is deliberately conservative and surfaced right here: the
  * bridge is loopback-only, off by default, and exposes only runtime
  * select/next/prev/copy/presenter commands — never deck edits or file access.
+ *
+ * Migrated to the shared {@link Dialog}/{@link Toggle} primitives by #32.
  */
 export function LiveControlPanel(): JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<LiveControlStatus>({ enabled: false, descriptor: null })
   const [busy, setBusy] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  // Live-control failures are stored as a structured operation error (#38);
+  // surface it right here in the panel where the action occurred, instead of
+  // letting it live only in store state.
+  const liveError = useDeckStore((s) => s.errors.live)
+  const clearOperationError = useDeckStore((s) => s.clearOperationError)
 
   const refresh = useCallback(async () => {
     const next = await window.cuedeck.live.getStatus()
@@ -155,15 +140,7 @@ export function LiveControlPanel(): JSX.Element | null {
     return () => window.removeEventListener(OPEN_LIVE_CONTROL_EVENT, onOpen)
   }, [refresh])
 
-  // Close on Escape while open.
-  useEffect(() => {
-    if (!open) return
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  const close = useCallback(() => setOpen(false), [])
 
   async function toggle(next: boolean): Promise<void> {
     setBusy(true)
@@ -173,121 +150,115 @@ export function LiveControlPanel(): JSX.Element | null {
         : await window.cuedeck.live.disable()
       setStatus(result)
       if (!next) setShowToken(false)
+      useDeckStore.getState().clearOperationError('live')
+    } catch (err) {
+      // Surface live-control failures as structured store state (#38) so later
+      // UI can render them; never swallow them into a silent no-op.
+      useDeckStore
+        .getState()
+        .setOperationError('live', errorMessageOf(err))
     } finally {
       setBusy(false)
     }
   }
 
-  if (!open) return null
-
   const d = status.descriptor
   const endpoint = d ? `${d.host}:${d.port}` : ''
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={() => setOpen(false)}
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-xl border border-deck-border bg-deck-panel shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-deck-border px-5 py-3">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-deck-text">🎛 Live Control</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                status.enabled
-                  ? 'bg-green-600 text-white'
-                  : 'bg-deck-card text-deck-muted border border-deck-border'
-              }`}
-            >
-              {status.enabled ? '● Active' : 'Off'}
-            </span>
-          </div>
-          <button
-            onClick={() => setOpen(false)}
-            className="rounded px-2 py-1 text-sm text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-            aria-label="Close live control"
+    <Dialog open={open} onClose={close} labelledBy="live-control-title" className="max-w-md">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-deck-border px-5 py-3">
+        <div className="flex items-center gap-2">
+          <span
+            id="live-control-title"
+            className="flex items-center gap-2 font-semibold text-deck-text"
           >
-            ✕
-          </button>
-        </header>
+            <SlidersIcon />
+            Live Control
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              status.enabled
+                ? 'bg-deck-success text-white'
+                : 'border border-deck-border bg-deck-card text-deck-muted'
+            }`}
+          >
+            {status.enabled ? 'Active' : 'Off'}
+          </span>
+        </div>
+        <IconButton label="Close live control" icon={<CloseIcon />} onClick={close} />
+      </header>
 
-        {/* Body */}
-        <div className="space-y-4 px-5 py-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="font-medium text-deck-text">Allow live control</div>
-              <div className="mt-0.5 text-xs text-deck-muted">
-                Let an MCP client drive this running app during a demo — advance
-                cards and copy snippets on cue.
-              </div>
-            </div>
-            <div className="shrink-0 pt-0.5">
-              <Toggle
-                checked={status.enabled}
-                onChange={(next) => void toggle(next)}
-                ariaLabel="Allow live control"
-                disabled={busy}
-              />
+      {/* Body */}
+      <div className="space-y-4 px-5 py-4">
+        {/* Live-control failures must be visible where the action occurred (#38). */}
+        {liveError && (
+          <StatusBanner tone="danger" assertive onDismiss={() => clearOperationError('live')}>
+            {liveError.message}
+          </StatusBanner>
+        )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="font-medium text-deck-text">Allow live control</div>
+            <div className="mt-0.5 text-xs text-deck-muted">
+              Let an MCP client drive this running app during a demo — advance
+              cards and copy snippets on cue.
             </div>
           </div>
-
-          {status.enabled && d ? (
-            <div className="rounded-lg border border-deck-border bg-deck-bg p-3">
-              <CopyRow label="Endpoint" value={endpoint} />
-              <div className="flex items-center justify-between gap-3 py-1.5">
-                <span className="shrink-0 text-xs text-deck-muted">Session token</span>
-                <button
-                  onClick={() => setShowToken((v) => !v)}
-                  className="rounded px-2 py-1 text-xs text-deck-muted transition hover:bg-deck-card hover:text-deck-text"
-                >
-                  {showToken ? 'Hide' : 'Reveal'}
-                </button>
-              </div>
-              <CopyRow label="Token" value={d.token} reveal={showToken} />
-              <CopyRow label="Config JSON" value={configJson(status)} mono />
-              <p className="mt-2 text-[11px] leading-snug text-deck-muted">
-                Loopback only (127.0.0.1) · token required on every request ·
-                runtime commands only (no deck edits or file access). See
-                <span className="font-mono"> docs/live-control.md</span>.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-deck-border bg-deck-bg p-3 text-xs text-deck-muted">
-              Live control is <strong className="text-deck-text">off</strong>.
-              Nothing is listening. Turn it on to expose a loopback-only,
-              token-guarded bridge for MCP <span className="font-mono">live_*</span>{' '}
-              tools.
-            </div>
-          )}
+          <div className="shrink-0 pt-0.5">
+            <Toggle
+              checked={status.enabled}
+              onChange={(next) => void toggle(next)}
+              ariaLabel="Allow live control"
+              disabled={busy}
+            />
+          </div>
         </div>
 
-        {/* Footer */}
-        <footer className="flex items-center justify-between gap-3 border-t border-deck-border px-5 py-3">
-          <span className="text-xs text-deck-muted">
-            {status.enabled ? 'Revoke instantly to stop all access.' : 'Off by default for safety.'}
-          </span>
-          {status.enabled ? (
-            <button
-              onClick={() => void toggle(false)}
-              disabled={busy}
-              className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
-            >
-              Revoke
-            </button>
-          ) : (
-            <button
-              onClick={() => setOpen(false)}
-              className="rounded-lg bg-deck-accent px-4 py-1.5 text-sm font-medium text-white transition hover:bg-deck-accentHover"
-            >
-              Done
-            </button>
-          )}
-        </footer>
+        {status.enabled && d ? (
+          <div className="rounded-lg border border-deck-border bg-deck-bg p-3">
+            <CopyRow label="Endpoint" value={endpoint} />
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <span className="shrink-0 text-xs text-deck-muted">Session token</span>
+              <Button variant="ghost" size="sm" onClick={() => setShowToken((v) => !v)}>
+                {showToken ? 'Hide' : 'Reveal'}
+              </Button>
+            </div>
+            <CopyRow label="Token" value={d.token} reveal={showToken} />
+            <CopyRow label="Config JSON" value={configJson(status)} mono />
+            <p className="mt-2 text-[11px] leading-snug text-deck-muted">
+              Loopback only (127.0.0.1) · token required on every request ·
+              runtime commands only (no deck edits or file access). See
+              <span className="font-mono"> docs/live-control.md</span>.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-deck-border bg-deck-bg p-3 text-xs text-deck-muted">
+            Live control is <strong className="text-deck-text">off</strong>.
+            Nothing is listening. Turn it on to expose a loopback-only,
+            token-guarded bridge for MCP <span className="font-mono">live_*</span>{' '}
+            tools.
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Footer */}
+      <footer className="flex items-center justify-between gap-3 border-t border-deck-border px-5 py-3">
+        <span className="text-xs text-deck-muted">
+          {status.enabled ? 'Revoke instantly to stop all access.' : 'Off by default for safety.'}
+        </span>
+        {status.enabled ? (
+          <Button variant="danger" onClick={() => void toggle(false)} disabled={busy}>
+            Revoke
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={close}>
+            Done
+          </Button>
+        )}
+      </footer>
+    </Dialog>
   )
 }
+

@@ -2,147 +2,158 @@ import { useEffect, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import { SnippetButton } from './SnippetButton'
 import { MarkdownNotes } from './MarkdownNotes'
+import { MarkdownHelp } from './MarkdownHelp'
 import { VariablesPanel } from './VariablesPanel'
 import { useDragSort } from '../hooks/useDragSort'
-import { BUILD_LANGUAGE, stepTitleFieldId } from '@shared/buildLanguage'
-import { REVEAL_VARIABLE_EVENT } from '../store/deckStore'
-import { ConfirmDeleteButton } from './ConfirmDeleteButton'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import { TextField } from './ui/TextField'
+import { TextArea } from './ui/TextArea'
+import { EmptyState } from './ui/EmptyState'
+import { SegmentedControl } from './ui/SegmentedControl'
+import { PlusIcon, TrashIcon } from './ui/icons'
 
 /** Private drag type marking an internal snippet-reorder drag (see useDragSort). */
 const SNIPPET_DND_TYPE = 'application/x-cuedeck-snippet'
 
+type NotesMode = 'write' | 'preview'
+
+const NOTES_MODE_LABELS: Record<NotesMode, string> = { write: 'Write', preview: 'Preview' }
+
+interface Props {
+  /** Add a new step — used by this pane's own empty state so a user landing
+   *  here with no step selected has the same one useful next action (#35). */
+  onAddCard: () => void
+}
+
 /**
- * Right-pane editor for the active step (#35): title, talking-point notes, and
- * the paste-ready content blocks. Presenter-friendly language throughout; cue
- * cards are "Steps" and snippets are "Paste-ready content". Advanced tools
- * (variables, Markdown help) live behind a contextual disclosure so they don't
- * compete with the primary authoring workflow. Newly created steps focus their
- * title immediately (driven by the store's focusRequest).
+ * The step editor (#35 guided Build workspace): title, talking points, and
+ * the list of paste-ready content for the active step (reorderable via each
+ * item's grip). Markdown formatting help sits in its own contextual
+ * disclosure next to the notes toggle; deck-level Variables render directly
+ * in the Advanced area below, relying on VariablesPanel's own single
+ * collapsed-by-default disclosure rather than a second wrapping toggle.
  */
-export function CardEditor(): JSX.Element {
+export function CardEditor({ onAddCard }: Props): JSX.Element {
   const deck = useDeckStore((s) => s.deck)!
   const activeCardId = useDeckStore((s) => s.activeCardId)
   const updateCard = useDeckStore((s) => s.updateCard)
   const removeCard = useDeckStore((s) => s.removeCard)
   const addSnippet = useDeckStore((s) => s.addSnippet)
   const reorderSnippets = useDeckStore((s) => s.reorderSnippets)
-  const focusRequest = useDeckStore((s) => s.focusRequest)
-  const clearFocusRequest = useDeckStore((s) => s.clearFocusRequest)
+  const focusCardId = useDeckStore((s) => s.focusCardId)
+  const clearFocusCard = useDeckStore((s) => s.clearFocusCard)
+  const focusSnippetId = useDeckStore((s) => s.focusSnippetId)
+  const clearFocusSnippet = useDeckStore((s) => s.clearFocusSnippet)
 
-  const card = deck.cards.find((c) => c.id === activeCardId)
+  const cardIndex = deck.cards.findIndex((c) => c.id === activeCardId)
+  const card = cardIndex >= 0 ? deck.cards[cardIndex] : undefined
 
   // Notes editor sub-mode: raw Markdown "Write" vs rendered "Preview" (#6).
-  const [notesPreview, setNotesPreview] = useState(false)
-  // Contextual advanced-tools disclosure (#35): variables + Markdown help.
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-
-  // A readiness warning that links to a variable (#36) reveals the advanced
-  // disclosure (which hosts the variables panel) so the field is reachable.
-  useEffect(() => {
-    function onReveal(): void {
-      setAdvancedOpen(true)
-    }
-    window.addEventListener(REVEAL_VARIABLE_EVENT, onReveal)
-    return () => window.removeEventListener(REVEAL_VARIABLE_EVENT, onReveal)
-  }, [])
+  const [notesMode, setNotesMode] = useState<NotesMode>('write')
+  // Id of the paste-ready item most recently created but not yet focused
+  // (#35) — passed to its SnippetButton so it mounts expanded and focused.
+  const [pendingFocusSnippetId, setPendingFocusSnippetId] = useState<string | null>(null)
 
   const titleRef = useRef<HTMLInputElement | null>(null)
-
-  // Autofocus a newly created step's title so it is immediately ready for
-  // typing (#35 acceptance criteria). Consume the one-shot request afterwards.
-  useEffect(() => {
-    if (focusRequest?.kind === 'step-title' && card && focusRequest.id === card.id) {
-      titleRef.current?.focus()
-      titleRef.current?.select()
-      clearFocusRequest()
-    }
-  }, [focusRequest, card, clearFocusRequest])
 
   const { dragIndex, overIndex, getSourceProps, getTargetProps } = useDragSort(
     SNIPPET_DND_TYPE,
     (from, to) => reorderSnippets(card!.id, from, to)
   )
 
+  // Focus + select the title the instant a newly created step renders — a new
+  // step must never sit unfocused waiting for a second click. Driven by the
+  // store's one-shot focusCardId so a single mechanism covers both the guided
+  // New Demo blank/starter-template flows (#34) and in-Build add-step (#35).
+  useEffect(() => {
+    if (card && focusCardId === card.id) {
+      titleRef.current?.focus()
+      titleRef.current?.select()
+      clearFocusCard()
+    }
+  }, [card, focusCardId, clearFocusCard])
+
+  // Consume a one-shot request to focus a specific piece of paste-ready content
+  // (#38): set when a deleted snippet is restored via undo, so focus lands back
+  // on the recovered item — a predictable focus target after a destructive
+  // action. Routed through the same pendingFocus mechanism new content uses.
+  useEffect(() => {
+    if (focusSnippetId && card?.snippets.some((s) => s.id === focusSnippetId)) {
+      setPendingFocusSnippetId(focusSnippetId)
+      clearFocusSnippet()
+    }
+  }, [focusSnippetId, card, clearFocusSnippet])
+
   if (!card) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="text-sm font-medium text-deck-text">{BUILD_LANGUAGE.step.emptyTitle}</p>
-        <p className="max-w-sm text-xs text-deck-muted">{BUILD_LANGUAGE.step.emptyBody}</p>
-      </div>
+      <EmptyState
+        className="mx-auto mt-10 max-w-md border-none"
+        title={deck.cards.length === 0 ? 'No steps yet' : 'Select a step to begin'}
+        description={
+          deck.cards.length === 0
+            ? "Steps are the demo beats you'll click through while presenting. Add your first one to start writing."
+            : 'Choose a step from the running order on the left, or add a new one.'
+        }
+        action={
+          <Button variant="primary" icon={<PlusIcon />} onClick={onAddCard}>
+            {deck.cards.length === 0 ? 'Add first step' : 'Add step'}
+          </Button>
+        }
+      />
     )
+  }
+
+  function handleAddSnippet(): void {
+    const id = addSnippet(card!.id)
+    setPendingFocusSnippetId(id)
   }
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-6">
-      {/* Title + delete */}
-      <div className="flex items-center gap-3">
-        <input
-          id={stepTitleFieldId(card.id)}
-          ref={titleRef}
-          value={card.title}
-          onChange={(e) => updateCard(card.id, { title: e.target.value })}
-          placeholder={BUILD_LANGUAGE.step.titlePlaceholder}
-          aria-label="Step title"
-          className="flex-1 border-b border-transparent bg-transparent text-2xl font-semibold outline-none focus:border-deck-border"
-        />
-        <ConfirmDeleteButton
-          onConfirm={() => removeCard(card.id)}
-          title={BUILD_LANGUAGE.step.remove}
-          restoreFocus={() => {
-            // After deleting a step, the store selects the next active card;
-            // move focus to its title so keyboard users land somewhere useful.
-            const nextId = useDeckStore.getState().activeCardId
-            if (nextId) {
-              requestAnimationFrame(() =>
-                document.getElementById(stepTitleFieldId(nextId))?.focus()
-              )
-            }
-          }}
-        />
+      {/* Current position + title + delete: the step, its place in the running
+          order, and the next action (delete) are all in one place (#35). */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-deck-muted">
+          Step {cardIndex + 1} of {deck.cards.length}
+        </span>
+        <div className="flex items-center gap-3">
+          <TextField
+            ref={titleRef}
+            value={card.title}
+            onChange={(e) => updateCard(card.id, { title: e.target.value })}
+            placeholder="Step title…"
+            aria-label="Step title"
+            className="flex-1 border-transparent bg-transparent px-0 text-2xl font-semibold focus-visible:border-b focus-visible:ring-0"
+          />
+          <IconButton
+            label="Delete step"
+            icon={<TrashIcon />}
+            onClick={() => removeCard(card.id)}
+            className="hover:!text-deck-danger"
+          />
+        </div>
       </div>
 
-      {/* Notes */}
+      {/* Talking points */}
       <div>
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <label className="block text-xs font-semibold uppercase tracking-wide text-deck-muted">
-            {BUILD_LANGUAGE.notes.heading}
+            Talking Points
           </label>
-          {/* Write / Preview toggle for the Markdown notes. */}
-          <div
-            className="flex overflow-hidden rounded border border-deck-border text-xs"
-            role="tablist"
-            aria-label="Notes editor mode"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!notesPreview}
-              onClick={() => setNotesPreview(false)}
-              className={`px-2 py-0.5 transition ${
-                notesPreview
-                  ? 'text-deck-muted hover:text-deck-text'
-                  : 'bg-deck-accent text-white'
-              }`}
-            >
-              Write
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={notesPreview}
-              onClick={() => setNotesPreview(true)}
-              className={`px-2 py-0.5 transition ${
-                notesPreview
-                  ? 'bg-deck-accent text-white'
-                  : 'text-deck-muted hover:text-deck-text'
-              }`}
-              title="Preview rendered Markdown"
-            >
-              Preview
-            </button>
+          <div className="flex items-center gap-3">
+            <MarkdownHelp />
+            <SegmentedControl
+              value={notesMode}
+              options={['write', 'preview']}
+              labels={NOTES_MODE_LABELS}
+              onChange={setNotesMode}
+              ariaLabel="Talking points editor mode"
+              size="sm"
+            />
           </div>
         </div>
-        {notesPreview ? (
+        {notesMode === 'preview' ? (
           card.notes.trim() ? (
             <MarkdownNotes
               source={card.notes}
@@ -150,34 +161,29 @@ export function CardEditor(): JSX.Element {
             />
           ) : (
             <p className="min-h-[9.5rem] rounded-lg border border-dashed border-deck-border bg-deck-panel p-3 text-sm italic text-deck-muted">
-              Nothing to preview yet. Write some Markdown in the Write tab.
+              Nothing to preview yet. Write some notes in the Write tab.
             </p>
           )
         ) : (
-          <textarea
+          <TextArea
             value={card.notes}
             onChange={(e) => updateCard(card.id, { notes: e.target.value })}
-            placeholder={`${BUILD_LANGUAGE.notes.placeholder} (Markdown: **bold**, - lists, - [ ] tasks, \`code\`)`}
+            placeholder="What you'll say and do on this step…"
             rows={6}
-            className="w-full resize-y rounded-lg border border-deck-border bg-deck-panel p-3 leading-relaxed outline-none placeholder:text-deck-muted focus:border-deck-accent"
+            aria-label="Talking points"
           />
         )}
       </div>
 
-      {/* Paste-ready content (snippets). This is the primary content the author
-          copies/drags live, so it stays in the main workflow. */}
+      {/* Paste-ready content */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs font-semibold uppercase tracking-wide text-deck-muted">
-            {BUILD_LANGUAGE.content.listHeading}
+            Paste-Ready Content
           </label>
-          <button
-            onClick={() => addSnippet(card.id)}
-            className="rounded bg-deck-card px-2 py-0.5 text-sm transition hover:bg-deck-accent hover:text-white"
-            title="Add a block of text you paste live"
-          >
-            + {BUILD_LANGUAGE.content.add}
-          </button>
+          <Button variant="ghost" size="sm" icon={<PlusIcon />} onClick={handleAddSnippet}>
+            Add content
+          </Button>
         </div>
         <div className="flex flex-col gap-3">
           {card.snippets.map((snippet, i) => {
@@ -188,59 +194,48 @@ export function CardEditor(): JSX.Element {
                 cardId={card.id}
                 snippet={snippet}
                 index={i}
+                count={card.snippets.length}
                 sourceHandlers={getSourceProps(i)}
                 targetHandlers={getTargetProps(i)}
+                onReorder={(from, to) => reorderSnippets(card.id, from, to)}
                 dragging={dragIndex === i}
                 dropAbove={isDropTarget && (dragIndex as number) > i}
                 dropBelow={isDropTarget && (dragIndex as number) < i}
+                autoFocus={pendingFocusSnippetId === snippet.id}
+                onAutoFocused={() => setPendingFocusSnippetId(null)}
               />
             )
           })}
           {card.snippets.length === 0 && (
-            <div className="rounded-lg border border-dashed border-deck-border p-6 text-center">
-              <p className="text-sm font-medium text-deck-text">
-                {BUILD_LANGUAGE.content.emptyTitle}
-              </p>
-              <p className="mt-1 text-xs text-deck-muted">{BUILD_LANGUAGE.content.emptyBody}</p>
-              <button
-                onClick={() => addSnippet(card.id)}
-                className="mt-3 rounded-lg bg-deck-accent px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-90"
-              >
-                {BUILD_LANGUAGE.content.emptyAction}
-              </button>
-            </div>
+            <EmptyState
+              title="No paste-ready content yet"
+              description="Add the text you'll paste into your demo app during this step."
+              action={
+                <Button variant="primary" size="sm" icon={<PlusIcon />} onClick={handleAddSnippet}>
+                  Add paste-ready content
+                </Button>
+              }
+            />
           )}
         </div>
       </div>
 
-      {/* Advanced tools (#35): variables + Markdown help kept behind a
-          contextual disclosure so they don't compete with the primary
-          authoring flow, but remain one click away. */}
-      <details
-        open={advancedOpen}
-        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
-        className="rounded-lg border border-deck-border bg-deck-panel"
-      >
-        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide text-deck-muted">
-          {BUILD_LANGUAGE.advanced.heading}
-          <span className="ml-2 font-normal normal-case tracking-normal text-deck-muted">
-            — {BUILD_LANGUAGE.advanced.hint}
-          </span>
-        </summary>
-        <div className="flex flex-col gap-4 border-t border-deck-border p-3">
-          {/* Deck-level variables ({{placeholder}} substitution, #7). */}
-          <VariablesPanel />
-          <p className="text-xs leading-relaxed text-deck-muted">
-            <span className="font-semibold text-deck-text">Markdown help:</span> Talking points
-            support <code className="font-mono">**bold**</code>,{' '}
-            <code className="font-mono">- lists</code>,{' '}
-            <code className="font-mono">- [ ] tasks</code>, and{' '}
-            <code className="font-mono">`code`</code>. Use{' '}
-            <code className="font-mono">{'{{variable}}'}</code> in content to insert values defined
-            above.
-          </p>
-        </div>
-      </details>
+      {/* Advanced: deck-level Variables — technical, infrequent configuration
+          that applies to the whole deck, not just this step. VariablesPanel
+          already owns its own collapsed-by-default disclosure (plus the
+          "N referenced" warning nudge), so this area is a plain labeled
+          section rather than a second toggle — variables need only one
+          expansion, and the warning is never hidden behind two clicks (#35
+          review). */}
+      <div>
+        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-deck-muted">
+          Advanced
+        </span>
+        <p className="mb-2 text-xs text-deck-muted">
+          Variables apply to the whole deck, not just this step.
+        </p>
+        <VariablesPanel />
+      </div>
     </div>
   )
 }

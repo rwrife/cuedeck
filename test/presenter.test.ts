@@ -4,7 +4,9 @@ import {
   isPresenterToggleKey,
   isPresenting,
   positionLabel,
-  presenterShortcuts,
+  presenterProgress,
+  presenterStepDensity,
+  snippetHotkeyLabel,
   toggleMode
 } from '../src/shared/presenter'
 
@@ -51,6 +53,61 @@ describe('presenter: position label', () => {
   })
 })
 
+describe('presenter: snippet hotkey label', () => {
+  it('labels the first nine snippets 1–9', () => {
+    expect(snippetHotkeyLabel(0)).toBe('1')
+    expect(snippetHotkeyLabel(4)).toBe('5')
+    expect(snippetHotkeyLabel(8)).toBe('9')
+  })
+
+  it('returns null for the tenth snippet onward (no copy hotkey)', () => {
+    expect(snippetHotkeyLabel(9)).toBeNull()
+    expect(snippetHotkeyLabel(20)).toBeNull()
+  })
+
+  it('returns null for invalid indices', () => {
+    expect(snippetHotkeyLabel(-1)).toBeNull()
+    expect(snippetHotkeyLabel(1.5)).toBeNull()
+  })
+})
+
+describe('presenter: progress fraction', () => {
+  it('advances from the first step to a full bar on the last', () => {
+    expect(presenterProgress(0, 4)).toBeCloseTo(0.25)
+    expect(presenterProgress(1, 4)).toBeCloseTo(0.5)
+    expect(presenterProgress(3, 4)).toBe(1)
+  })
+
+  it('is zero for an empty deck or an unresolved active card', () => {
+    expect(presenterProgress(0, 0)).toBe(0)
+    expect(presenterProgress(-1, 5)).toBe(0)
+  })
+
+  it('clamps an out-of-range index to a full bar', () => {
+    expect(presenterProgress(99, 3)).toBe(1)
+  })
+})
+
+describe('presenter: step density', () => {
+  it('treats an all-but-empty step as sparse', () => {
+    expect(presenterStepDensity({ notesLength: 0, snippetCount: 0 })).toBe('sparse')
+    expect(presenterStepDensity({ notesLength: 40, snippetCount: 1 })).toBe('sparse')
+  })
+
+  it('treats a moderate step as balanced', () => {
+    expect(presenterStepDensity({ notesLength: 200, snippetCount: 2 })).toBe('balanced')
+  })
+
+  it('treats a content-heavy step as full', () => {
+    expect(presenterStepDensity({ notesLength: 900, snippetCount: 3 })).toBe('full')
+    expect(presenterStepDensity({ notesLength: 0, snippetCount: 8 })).toBe('full')
+  })
+
+  it('guards against negative inputs', () => {
+    expect(presenterStepDensity({ notesLength: -100, snippetCount: -5 })).toBe('sparse')
+  })
+})
+
 describe('presenter: toggle hotkey', () => {
   it('matches bare F5', () => {
     expect(isPresenterToggleKey({ key: 'F5' })).toBe(true)
@@ -77,50 +134,5 @@ describe('presenter: toggle hotkey', () => {
     for (const key of ['F4', 'F6', 'Enter', 'ArrowLeft', 'a', '1', '']) {
       expect(isPresenterToggleKey({ key })).toBe(false)
     }
-  })
-})
-
-describe('presenter: contextual shortcut hints', () => {
-  it('always offers Exit', () => {
-    const hints = presenterShortcuts({ snippetCount: 0, canGoPrev: false, canGoNext: false })
-    expect(hints).toEqual([{ keys: 'F5', label: 'Exit' }])
-  })
-
-  it('shows a single copy key for one snippet', () => {
-    const hints = presenterShortcuts({ snippetCount: 1, canGoPrev: false, canGoNext: false })
-    expect(hints[0]).toEqual({ keys: '1', label: 'Copy snippet' })
-  })
-
-  it('shows a copy range for multiple snippets, capped at 9', () => {
-    expect(
-      presenterShortcuts({ snippetCount: 4, canGoPrev: false, canGoNext: false })[0]
-    ).toEqual({ keys: '1–4', label: 'Copy snippet' })
-    // Only 1–9 have hotkeys, so a bigger deck still caps at 9.
-    expect(
-      presenterShortcuts({ snippetCount: 25, canGoPrev: false, canGoNext: false })[0]
-    ).toEqual({ keys: '1–9', label: 'Copy snippet' })
-  })
-
-  it('only advertises navigation that is actually possible', () => {
-    const keysOf = (opts: Parameters<typeof presenterShortcuts>[0]): string[] =>
-      presenterShortcuts(opts).map((h) => h.keys)
-
-    expect(keysOf({ snippetCount: 0, canGoPrev: true, canGoNext: true })).toEqual([
-      '←',
-      '→',
-      'F5'
-    ])
-    expect(keysOf({ snippetCount: 0, canGoPrev: false, canGoNext: true })).toEqual(['→', 'F5'])
-    expect(keysOf({ snippetCount: 0, canGoPrev: true, canGoNext: false })).toEqual(['←', 'F5'])
-  })
-
-  it('composes copy + navigation + exit in order for a rich step', () => {
-    const hints = presenterShortcuts({ snippetCount: 3, canGoPrev: true, canGoNext: true })
-    expect(hints).toEqual([
-      { keys: '1–3', label: 'Copy snippet' },
-      { keys: '←', label: 'Previous' },
-      { keys: '→', label: 'Next' },
-      { keys: 'F5', label: 'Exit' }
-    ])
   })
 })

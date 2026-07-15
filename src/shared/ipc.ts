@@ -12,15 +12,22 @@ export const IPC = {
   deckSave: 'deck:save',
   deckCreate: 'deck:create',
   deckDelete: 'deck:delete',
-  deckRename: 'deck:rename',
-  deckDuplicate: 'deck:duplicate',
   deckExport: 'deck:export',
   deckImport: 'deck:import',
+  // Library-local deck lifecycle actions (#34)
+  deckRename: 'deck:rename',
+  deckDuplicate: 'deck:duplicate',
 
   // Window / presenter mode
   toggleAlwaysOnTop: 'window:toggleAlwaysOnTop',
   getAlwaysOnTop: 'window:getAlwaysOnTop',
   setPresenter: 'window:setPresenter',
+
+  // Safe shutdown handshake (#38)
+  /** Main → renderer: flush any pending debounced edits before the window closes. */
+  appRequestFlush: 'app:requestFlush',
+  /** Renderer → main: pending edits are flushed; the window may now close. */
+  appFlushComplete: 'app:flushComplete',
 
   // Settings persistence (#8)
   settingsGet: 'settings:get',

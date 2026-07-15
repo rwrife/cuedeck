@@ -39,45 +39,6 @@
 export const VARIABLE_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/
 
 /**
- * Result of validating a proposed variable name (#38). `ok` names are safe to
- * commit; otherwise `reason` is a short, user-facing message the editor shows
- * inline instead of silently reverting the input.
- */
-export interface VariableNameCheck {
-  ok: boolean
-  reason?: string
-}
-
-/**
- * Validate a proposed variable name against the allowed pattern and, when a set
- * of existing names is supplied, against collisions (#38). Renaming a key to
- * itself is always allowed. This is pure so the guidance text is unit-testable
- * and identical wherever variables are edited.
- *
- * @param proposed Raw candidate name (leading/trailing whitespace is trimmed).
- * @param existing Currently-defined variable names to check for collisions.
- * @param current The name being renamed, if any; excluded from collision checks.
- */
-export function validateVariableName(
-  proposed: string,
-  existing: readonly string[] = [],
-  current?: string
-): VariableNameCheck {
-  const name = proposed.trim()
-  if (!name) return { ok: false, reason: 'Name can’t be empty.' }
-  if (!VARIABLE_NAME_PATTERN.test(name)) {
-    return {
-      ok: false,
-      reason: 'Use only letters, numbers, and . _ - (no spaces or braces).'
-    }
-  }
-  if (name !== current && existing.includes(name)) {
-    return { ok: false, reason: `“${name}” already exists.` }
-  }
-  return { ok: true }
-}
-
-/**
  * Master placeholder scanner. Captures the inner name with optional surrounding
  * whitespace; the captured group is re-validated against
  * {@link VARIABLE_NAME_PATTERN} before being treated as a real reference. The
@@ -104,6 +65,40 @@ export function MISSING_VARIABLE_MARKER(name: string): string {
 /** True when `value` is a usable (non-empty, non-whitespace) variable value. */
 function hasValue(value: string | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+/** Result of validating a candidate variable name (create or rename). */
+export type VariableNameValidation = { ok: true; name: string } | { ok: false; error: string }
+
+/**
+ * Validate a candidate variable name for the Variables panel (#38 inline
+ * guidance). Trims surrounding whitespace, then enforces the same
+ * {@link VARIABLE_NAME_PATTERN} the `{{placeholder}}` scanner uses — so a name
+ * the user types here can actually be referenced from snippet content — and
+ * rejects collisions with an already-defined key. Pure and DOM-free so the
+ * exact, actionable messages are unit-tested independently of any component and
+ * a bad rename can surface guidance instead of silently reverting.
+ *
+ * `existing` is the set of already-defined variable names. `current`, when
+ * given, is the name being renamed *from* — it is excluded from the collision
+ * check so re-committing an unchanged name is allowed (and reported as ok).
+ */
+export function validateVariableName(
+  raw: string,
+  existing: Iterable<string> = [],
+  options: { current?: string } = {}
+): VariableNameValidation {
+  const name = raw.trim()
+  if (name.length === 0) {
+    return { ok: false, error: 'Give this variable a name.' }
+  }
+  if (!VARIABLE_NAME_PATTERN.test(name)) {
+    return { ok: false, error: 'Use only letters, numbers, and _ . - (no spaces).' }
+  }
+  if (name !== options.current && new Set(existing).has(name)) {
+    return { ok: false, error: `A variable named “${name}” already exists.` }
+  }
+  return { ok: true, name }
 }
 
 /**

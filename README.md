@@ -4,7 +4,39 @@
 
 **Demo cue cards with instant clipboard snippets.** A desktop teleprompter for software demos — lay out your talking points as cue cards, attach the text blobs you paste into the app you're demoing, and copy or drag them out in one click.
 
+CueDeck is organized as a guided **Studio** with four modes — **Library**, **Build**, **Rehearse**, and **Present** — that walk you from "which demo?" all the way to delivering it from a compact, always-on-top surface.
+
 Built with **Electron + React + TypeScript + Vite + Tailwind + Zustand**.
+
+---
+
+## The Studio workflow
+
+CueDeck's persistent mode rail keeps the current step of your job — and the one clear next action — always in view.
+
+### Library — _what am I working on?_
+
+Find or start a demo. Search and sort your decks, or start a new one from a blank demo, a starter template, or an imported file.
+
+![CueDeck Library mode: a searchable, sortable list of demo decks with a New Demo button](docs/images/studio-library.png)
+
+### Build — _what will happen in my demo?_
+
+Plan the running order and prepare content. Each **step** has **talking points** (safe-subset Markdown) and **paste-ready content** you copy live. Advanced tools — deck **variables**, formatting help, live control, and import/export — sit in a contextual Advanced area so they never crowd the primary flow. The one primary next action is **Rehearse**.
+
+![CueDeck Build mode: a step running order beside a talking-points editor and paste-ready content](docs/images/studio-build.png)
+
+### Rehearse — _am I ready to present?_
+
+A read-only, full-window run-through with a live **readiness** preflight. Warnings (empty titles, unfilled variables, low-content steps) link straight to the exact Build location that fixes them — they inform, they never block. The one primary next action is **Start Presenting**.
+
+![CueDeck Rehearse mode: a readiness summary with a warning, rendered talking points, and copy actions](docs/images/studio-rehearse.png)
+
+### Present — _what do I need right now?_
+
+A compact, always-on-top surface with just the active step, rendered talking points, one-click paste actions, progress, and previous/next navigation. Exiting returns to Rehearse and restores your prior window size and always-on-top state.
+
+![CueDeck Present mode: a compact window showing the active step, paste action, and progress](docs/images/studio-present.png)
 
 ---
 
@@ -12,19 +44,23 @@ Built with **Electron + React + TypeScript + Vite + Tailwind + Zustand**.
 
 If you give software demos, you probably script them: what to click, what to say, and the exact chunks of text you paste into forms mid-demo. Doing that in Notepad means constant alt-tabbing and hunting for the right blob. CueDeck gives that workflow real structure:
 
-- **Cue cards** for each beat of the demo (your running order).
-- **Talking-point notes** per card, written in a safe subset of **Markdown** (headings, bold/italic, inline code, bullet/ordered lists, and `- [ ]` task checkboxes) and rendered — sanitized — in Presenter Mode.
-- **Snippets** — labeled text blobs with a big **Copy** button and a **drag handle** so you can drop them straight into the target app.
-- **Pin-on-top** presenter mode so the deck floats above your demo window.
+- **Steps** for each beat of the demo, in a stable **Build** running order.
+- **Talking points** per step, written in a safe subset of **Markdown** (headings, bold/italic, inline code, bullet/ordered lists, and `- [ ]` task checkboxes) and rendered — sanitized — in Rehearse and Present.
+- **Paste-ready content** — labeled text blobs with a big **Copy** button and a **drag handle** so you can drop them straight into the target app.
+- **Rehearse** with a readiness preflight, then a **compact, always-on-top Present** surface that floats above your demo window.
 - **Import / export** decks as `.json` files via native OS dialogs — back them up, commit them to a repo, or share with a teammate.
 
 ## Concepts
 
-| Term | Meaning |
-| --- | --- |
-| **Deck** | A full demo script. Saved as one `*.cuedeck.json` file. |
-| **Cue Card** | One step/beat. Has a title, notes, and 0..N snippets. |
-| **Snippet** | A labeled blob of text. One-click copy + drag-out. |
+CueDeck's primary UI uses plain-language labels; the deck **file format** keeps its original terms. They map one-to-one:
+
+| Studio label | File-format term | Meaning |
+| --- | --- | --- |
+| **Demo** / **Deck** | **Deck** | A full demo script. Saved as one `*.cuedeck.json` file. |
+| **Step** | **Cue Card** | One step/beat. Has a title, talking points, and 0..N paste-ready snippets. |
+| **Paste-ready content** | **Snippet** | A labeled blob of text. One-click copy + drag-out. |
+| **Talking points** | **Notes** | Per-step notes in a safe subset of Markdown, rendered — sanitized — in Rehearse and Present. |
+| **Variables** | **Variables** | Deck-level `{{placeholder}}` values substituted into paste-ready content on copy/drag. |
 
 > **Deck file format:** decks are a single versioned JSON document
 > (`*.cuedeck.json`). The format is documented in
@@ -134,7 +170,8 @@ src/
 │   └── src/
 │       ├── App.tsx
 │       ├── main.tsx
-│       ├── components/     # DeckPicker, DeckWorkspace, CardList, CardEditor, SnippetButton
+│       ├── components/     # StudioShell + ModeRail, Library, DeckWorkspace (Build),
+│       │                   #   RehearseView, PresenterView, and shared ui/ primitives
 │       ├── store/          # Zustand store w/ debounced auto-save
 │       └── styles/
 ├── shared/         # types + IPC channels + deck validator/normalizer (both sides)
@@ -157,31 +194,16 @@ Decks are stored as individual JSON files under Electron's `userData` directory:
 - **macOS:** `~/Library/Application Support/cuedeck/decks/`
 - **Linux:** `~/.config/cuedeck/decks/`
 
-Each deck is human-readable JSON, so export/backup is just a file copy. You can also use **Export** (deck picker or workspace top bar) to save a deck anywhere via a native save dialog, and **Import…** to load a deck file back in — imported decks are validated and assigned a fresh id so they never collide with existing ones.
-
-## Accessibility & keyboard
-
-CueDeck is built to be driven entirely from the keyboard:
-
-- **Copy hotkeys** — press `1`..`9` to copy the matching snippet on the active
-  card; `←` / `→` step through the running order.
-- **Search / command palette** — `/` (or `Ctrl`/`Cmd`+`K`) opens quick search;
-  `↑` / `↓` to move, `Enter` to jump to a card or copy a snippet, `Esc` to close.
-- **Dialogs & menus** — the Settings and Search dialogs are modal: `Tab` /
-  `Shift`+`Tab` cycle **within** the dialog (focus is trapped so it can't escape
-  behind the overlay), and closing a dialog restores focus to wherever you were
-  before it opened.
-- **Reduced motion** — when your OS "reduce motion" preference is on, CueDeck
-  disables nonessential transitions and animations.
-- **Theming & text scale** — dark/light/system themes and a presenter font-size
-  control live in **Settings** (`⚙`), with contrast tuned for both themes.
+Each deck is human-readable JSON, so export/backup is just a file copy. You can also **Export** a deck — from its overflow menu in the **Library**, or from **Build**'s Advanced area — to save it anywhere via a native save dialog, and **Import…** (a New Demo choice in the Library) to load a deck file back in — imported decks are validated and assigned a fresh id so they never collide with existing ones.
 
 ## Roadmap
 
-See the GitHub Issues for the build-out plan. Shipped so far: keyboard-driven
-copy hotkeys, drag-to-reorder, deck import/export, search, presenter compact
-mode, themes, cross-platform packaging (see [`RELEASING.md`](RELEASING.md)), a
-headless [`cuedeck` CLI](docs/cli.md) for scripting decks, a
+See the GitHub Issues for the build-out plan. Shipped so far: the guided
+**Studio** (Library → Build → Rehearse → Present) with a readiness preflight and
+safe save/undo, keyboard-driven copy hotkeys, drag-to-reorder, deck
+import/export, search, a compact always-on-top Present surface, themes,
+cross-platform packaging (see [`RELEASING.md`](RELEASING.md)), a headless
+[`cuedeck` CLI](docs/cli.md) for scripting decks, a
 [`cuedeck-mcp`](docs/mcp.md) server, and an
 [AI-authoring workflow](docs/ai-authoring.md) (demo brief → deck).
 

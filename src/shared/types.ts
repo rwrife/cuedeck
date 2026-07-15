@@ -98,16 +98,29 @@ export interface ImportResult {
 }
 
 /**
- * Result of a deck mutation (rename / duplicate / delete) surfaced to the
- * Library so it can show visible success or error feedback (#34). `ok` is true
- * only when the operation actually changed disk. `summary` carries the affected
- * deck (the renamed deck, or the freshly created duplicate) when relevant.
+ * Result of a deck rename attempt (#34). Renaming never involves a native
+ * dialog, so unlike {@link ExportResult}/{@link ImportResult} there is no
+ * "cancelled" case — `ok: false` always carries a human-readable `error`.
  */
-export interface DeckActionResult {
+export interface RenameResult {
   ok: boolean
-  /** Affected deck summary (renamed deck / new duplicate), when applicable. */
+  /** The renamed deck's updated summary (present when ok). */
   summary?: DeckSummary
-  /** Human-readable failure reason (present when a real error occurred). */
+  error?: string
+}
+
+/** Result of a deck duplicate attempt (#34): a new, re-id'd copy of the deck. */
+export interface DuplicateResult {
+  ok: boolean
+  /** The new copy's summary (present when ok). */
+  summary?: DeckSummary
+  error?: string
+}
+
+/** Result of a deck delete attempt (#34), surfaced instead of a bare boolean
+ *  so a failure (e.g. a locked/missing file) is never silently swallowed. */
+export interface DeleteResult {
+  ok: boolean
   error?: string
 }
 

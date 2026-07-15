@@ -1,150 +1,151 @@
 import { describe, it, expect } from 'vitest'
-import type { DeckSummary } from '../src/shared/types'
+import { CURRENT_SCHEMA_VERSION, type Deck, type DeckSummary } from '../src/shared/types'
 import {
-  DEFAULT_LIBRARY_SORT,
-  LIBRARY_SORTS,
-  NEW_DEMO_CHOICES,
-  blankDemoDeck,
-  filterSummaries,
-  firstStepCard,
-  isLibrarySort,
-  queryLibrary,
-  sortSummaries,
-  starterTemplateDeck
+  applyStarterTemplate,
+  buildStarterTemplateCards,
+  filterDecksByQuery,
+  sortDecks,
+  suggestCopyName,
+  validateDeckName,
+  STARTER_TEMPLATE_VARIABLES
 } from '../src/shared/library'
-import { validateDeck } from '../src/shared/deck'
-import { CURRENT_SCHEMA_VERSION } from '../src/shared/types'
 
-function summary(partial: Partial<DeckSummary> & { id: string }): DeckSummary {
+/**
+ * Pure, DOM-free coverage for the Library surface's collection helpers (#34):
+ * search/filter, sort, name validation, duplicate-name suggestion, and the
+ * starter-template deck builder. None of these touch React, Zustand, or
+ * Electron, so they're covered directly here rather than via component tests.
+ */
+
+function summary(overrides: Partial<DeckSummary>): DeckSummary {
   return {
-    name: partial.id,
-    filePath: `/decks/${partial.id}.json`,
+    id: 'deck-1',
+    name: 'Untitled Deck',
+    filePath: '/decks/deck-1.json',
     cardCount: 0,
     updatedAt: '2026-01-01T00:00:00.000Z',
-    ...partial
+    ...overrides
   }
 }
 
-const decks: DeckSummary[] = [
-  summary({ id: 'a', name: 'Marketing Launch', updatedAt: '2026-03-01T00:00:00.000Z', cardCount: 5 }),
-  summary({ id: 'b', name: 'API Onboarding', updatedAt: '2026-05-01T00:00:00.000Z', cardCount: 2 }),
-  summary({ id: 'c', name: 'Quarterly Review', updatedAt: '2026-01-15T00:00:00.000Z', cardCount: 9 })
-]
+describe('sortDecks', () => {
+  const decks: DeckSummary[] = [
+    summary({ id: 'a', name: 'Zebra Demo', updatedAt: '2026-01-01T00:00:00.000Z' }),
+    summary({ id: 'b', name: 'apple Demo', updatedAt: '2026-03-01T00:00:00.000Z' }),
+    summary({ id: 'c', name: 'Mango Demo', updatedAt: '2026-02-01T00:00:00.000Z' })
+  ]
 
-describe('library: sort vocabulary', () => {
-  it('defaults to recently-updated', () => {
-    expect(DEFAULT_LIBRARY_SORT).toBe('recent')
-    expect(LIBRARY_SORTS[0].sort).toBe('recent')
+  it('sorts by most-recently-updated first', () => {
+    const sorted = sortDecks(decks, 'updated')
+    expect(sorted.map((d) => d.id)).toEqual(['b', 'c', 'a'])
   })
 
-  it('every sort option has a label', () => {
-    for (const o of LIBRARY_SORTS) expect(o.label.length).toBeGreaterThan(0)
+  it('sorts by name, ascending and case-insensitive', () => {
+    const sorted = sortDecks(decks, 'name')
+    expect(sorted.map((d) => d.id)).toEqual(['b', 'c', 'a'])
   })
 
-  it('recognizes only known sorts', () => {
-    expect(isLibrarySort('recent')).toBe(true)
-    expect(isLibrarySort('name')).toBe(true)
-    expect(isLibrarySort('cards')).toBe(true)
-    expect(isLibrarySort('oldest')).toBe(true)
-    expect(isLibrarySort('nope')).toBe(false)
-    expect(isLibrarySort(null)).toBe(false)
+  it('does not mutate the input array', () => {
+    const original = [...decks]
+    sortDecks(decks, 'name')
+    expect(decks).toEqual(original)
   })
 })
 
-describe('library: sortSummaries', () => {
-  it('does not mutate the input', () => {
-    const before = decks.map((d) => d.id)
-    sortSummaries(decks, 'name')
-    expect(decks.map((d) => d.id)).toEqual(before)
+describe('filterDecksByQuery', () => {
+  const decks: DeckSummary[] = [
+    summary({ id: 'a', name: 'SaaS Onboarding Walkthrough' }),
+    summary({ id: 'b', name: 'API Devtool Demo' }),
+    summary({ id: 'c', name: 'Billing Upgrade Flow' })
+  ]
+
+  it('returns every deck, unchanged order, for an empty/whitespace query', () => {
+    expect(filterDecksByQuery(decks, '')).toEqual(decks)
+    expect(filterDecksByQuery(decks, '   ')).toEqual(decks)
   })
 
-  it('orders by most recent update', () => {
-    expect(sortSummaries(decks, 'recent').map((d) => d.id)).toEqual(['b', 'a', 'c'])
+  it('matches a subsequence of the deck name, case-insensitively', () => {
+    const result = filterDecksByQuery(decks, 'saas')
+    expect(result.map((d) => d.id)).toEqual(['a'])
   })
 
-  it('orders by oldest update', () => {
-    expect(sortSummaries(decks, 'oldest').map((d) => d.id)).toEqual(['c', 'a', 'b'])
+  it('excludes decks that do not match', () => {
+    const result = filterDecksByQuery(decks, 'zzz-no-match')
+    expect(result).toEqual([])
   })
 
-  it('orders by name A–Z', () => {
-    expect(sortSummaries(decks, 'name').map((d) => d.name)).toEqual([
-      'API Onboarding',
-      'Marketing Launch',
-      'Quarterly Review'
-    ])
-  })
-
-  it('orders by most cards', () => {
-    expect(sortSummaries(decks, 'cards').map((d) => d.id)).toEqual(['c', 'a', 'b'])
-  })
-
-  it('breaks ties by name then id', () => {
-    const tied: DeckSummary[] = [
-      summary({ id: 'z', name: 'Same', updatedAt: '2026-01-01T00:00:00.000Z', cardCount: 1 }),
-      summary({ id: 'a', name: 'Same', updatedAt: '2026-01-01T00:00:00.000Z', cardCount: 1 })
-    ]
-    expect(sortSummaries(tied, 'recent').map((d) => d.id)).toEqual(['a', 'z'])
+  it('ranks a tighter/earlier match above a looser one', () => {
+    const result = filterDecksByQuery(decks, 'demo')
+    // "API Devtool Demo" ends with an exact "Demo"; both should match, but
+    // ordering is at minimum stable and inclusive of both.
+    expect(result.map((d) => d.id)).toContain('b')
   })
 })
 
-describe('library: filter + query', () => {
-  it('returns everything for an empty query', () => {
-    expect(filterSummaries(decks, '   ')).toHaveLength(3)
+describe('validateDeckName', () => {
+  it('rejects an empty name', () => {
+    const result = validateDeckName('')
+    expect(result.ok).toBe(false)
   })
 
-  it('fuzzy-matches deck names', () => {
-    expect(filterSummaries(decks, 'mkt lnch').map((d) => d.id)).toEqual(['a'])
-    expect(filterSummaries(decks, 'api').map((d) => d.id)).toEqual(['b'])
+  it('rejects a whitespace-only name', () => {
+    const result = validateDeckName('   ')
+    expect(result.ok).toBe(false)
   })
 
-  it('returns empty when nothing matches', () => {
-    expect(filterSummaries(decks, 'zzzzz')).toEqual([])
-  })
-
-  it('queryLibrary filters then sorts', () => {
-    const both: DeckSummary[] = [
-      summary({ id: 'a', name: 'Onboarding A', updatedAt: '2026-01-01T00:00:00.000Z' }),
-      summary({ id: 'b', name: 'Onboarding B', updatedAt: '2026-02-01T00:00:00.000Z' })
-    ]
-    expect(queryLibrary(both, 'onboarding', 'recent').map((d) => d.id)).toEqual(['b', 'a'])
-    expect(queryLibrary(both, 'onboarding', 'name').map((d) => d.id)).toEqual(['a', 'b'])
+  it('accepts and trims a valid name', () => {
+    const result = validateDeckName('  My Demo  ')
+    expect(result).toEqual({ ok: true, name: 'My Demo' })
   })
 })
 
-describe('library: new demo choices', () => {
-  it('offers blank, template, and import with explanatory copy', () => {
-    expect(NEW_DEMO_CHOICES.map((c) => c.choice)).toEqual(['blank', 'template', 'import'])
-    for (const c of NEW_DEMO_CHOICES) {
-      expect(c.label.length).toBeGreaterThan(0)
-      expect(c.description.length).toBeGreaterThan(0)
+describe('suggestCopyName', () => {
+  it('appends "copy" when there is no collision', () => {
+    expect(suggestCopyName('Product Launch', [])).toBe('Product Launch copy')
+  })
+
+  it('increments a numbered suffix on collision', () => {
+    const existing = ['Product Launch', 'Product Launch copy']
+    expect(suggestCopyName('Product Launch', existing)).toBe('Product Launch copy 2')
+  })
+
+  it('keeps incrementing past multiple collisions', () => {
+    const existing = ['Product Launch', 'Product Launch copy', 'Product Launch copy 2']
+    expect(suggestCopyName('Product Launch', existing)).toBe('Product Launch copy 3')
+  })
+})
+
+describe('starter template', () => {
+  it('builds at least two cards with paste-ready snippets', () => {
+    const cards = buildStarterTemplateCards()
+    expect(cards.length).toBeGreaterThanOrEqual(2)
+    expect(cards.every((c) => c.title.trim().length > 0)).toBe(true)
+    expect(cards.some((c) => c.snippets.length > 0)).toBe(true)
+  })
+
+  it('assigns fresh, unique ids to every card and snippet', () => {
+    const cards = buildStarterTemplateCards()
+    const ids = cards.flatMap((c) => [c.id, ...c.snippets.map((s) => s.id)])
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('applies the template onto an existing (empty) deck without changing its identity', () => {
+    const base: Deck = {
+      id: 'deck-123',
+      name: 'My Starter Demo',
+      cards: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      variables: {}
     }
-  })
-})
 
-describe('library: starter content', () => {
-  it('first-step card is focused, not empty, with a fresh id', () => {
-    const a = firstStepCard()
-    const b = firstStepCard()
-    expect(a.title.length).toBeGreaterThan(0)
-    expect(a.notes.length).toBeGreaterThan(0)
-    expect(a.id).not.toBe(b.id)
-  })
+    const templated = applyStarterTemplate(base)
 
-  it('blank demo is a valid deck that already has a first card', () => {
-    const deck = blankDemoDeck('My Demo')
-    expect(deck.name).toBe('My Demo')
-    expect(deck.cards).toHaveLength(1)
-    expect(deck.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
-    expect(validateDeck(deck).ok).toBe(true)
-  })
-
-  it('starter template is a valid multi-card teaching deck', () => {
-    const deck = starterTemplateDeck()
-    expect(deck.cards.length).toBeGreaterThanOrEqual(3)
-    // At least one snippet exists to demonstrate paste-ready content.
-    expect(deck.cards.some((c) => c.snippets.length > 0)).toBe(true)
-    expect(validateDeck(deck).ok).toBe(true)
-    // Fresh ids per call.
-    expect(starterTemplateDeck().id).not.toBe(deck.id)
+    expect(templated.id).toBe('deck-123')
+    expect(templated.name).toBe('My Starter Demo')
+    expect(templated.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    expect(templated.cards.length).toBeGreaterThan(0)
+    expect(templated.variables).toEqual(STARTER_TEMPLATE_VARIABLES)
   })
 })

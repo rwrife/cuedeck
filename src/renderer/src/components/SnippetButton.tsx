@@ -2,31 +2,53 @@ import { useEffect, useRef, useState } from 'react'
 import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
-import { BUILD_LANGUAGE, contentLabelFieldId } from '@shared/buildLanguage'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
-import { ConfirmDeleteButton } from './ConfirmDeleteButton'
+import { getReorderTargetIndex, isReorderKey } from '../lib/ui/listReorder'
+import { Button } from './ui/Button'
+import { IconButton } from './ui/IconButton'
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  GripIcon,
+  WarningIcon
+} from './ui/icons'
 
 interface Props {
   cardId: string
   snippet: Snippet
   index: number
+  /** Total items in this card's list, for the reorder position/bounds (#39). */
+  count: number
   /** Drag-source handlers for the reorder grip (from useDragSort). */
   sourceHandlers: DragSourceHandlers
   /** Drop-target handlers for the row body (from useDragSort). */
   targetHandlers: DropTargetHandlers
+  /** Keyboard reorder callback (Alt+↑ / Alt+↓), so reordering isn't mouse-only (#39). */
+  onReorder: (from: number, to: number) => void
   /** Row is the current drop target; render an insertion indicator. */
   dropAbove: boolean
   dropBelow: boolean
   /** Row is the one being dragged; dim it. */
   dragging: boolean
+  /** This item was just created (#35): mount expanded and focus/select its
+   *  label immediately, instead of leaving new content collapsed and
+   *  requiring a second click before it can be edited. */
+  autoFocus?: boolean
+  /** Called once autoFocus has been applied, so the parent can clear its
+   *  pending-focus id and avoid refocusing on a later re-render. */
+  onAutoFocused?: () => void
 }
 
 /**
- * The core interaction unit. Each snippet is:
+ * The core interaction unit — one piece of paste-ready content. Each item is:
  *  - editable (label + content)
  *  - one-click copy to clipboard (with a "Copied ✓" flash)
  *  - draggable OUT: drag the numbered handle straight into another app's field
- *  - reorderable: drag the dedicated grip (⠿) to sort within the card
+ *  - reorderable: drag the dedicated grip (⠿), or focus it and press
+ *    Alt+↑ / Alt+↓, to sort within the step (#39 keyboard reordering)
  *
  * The two drags are deliberately separate affordances with separate data:
  * the numbered handle emits `text/plain` (external paste target), while the
@@ -37,11 +59,15 @@ export function SnippetButton({
   cardId,
   snippet,
   index,
+  count,
   sourceHandlers,
   targetHandlers,
+  onReorder,
   dropAbove,
   dropBelow,
-  dragging
+  dragging,
+  autoFocus,
+  onAutoFocused
 }: Props): JSX.Element {
   const updateSnippet = useDeckStore((s) => s.updateSnippet)
   const removeSnippet = useDeckStore((s) => s.removeSnippet)
@@ -52,20 +78,8 @@ export function SnippetButton({
   // Flash "Copied ✓" whenever this snippet is the last-copied one — whether the
   // copy came from this button or from a number-key hotkey.
   const copied = useDeckStore((s) => s.lastCopiedSnippetId === snippet.id)
-  const focusRequest = useDeckStore((s) => s.focusRequest)
-  const clearFocusRequest = useDeckStore((s) => s.clearFocusRequest)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(autoFocus ?? false)
   const labelRef = useRef<HTMLInputElement | null>(null)
-
-  // Autofocus a newly added block's label so it is immediately ready for
-  // typing (#35 acceptance criteria). Consume the one-shot request afterwards.
-  useEffect(() => {
-    if (focusRequest?.kind === 'content-label' && focusRequest.id === snippet.id) {
-      labelRef.current?.focus()
-      labelRef.current?.select()
-      clearFocusRequest()
-    }
-  }, [focusRequest, snippet.id, clearFocusRequest])
 
   // Which `{{variables}}` this snippet references, split into filled vs unset.
   const { used, missing } = classifyVariables(snippet.content, variables)
@@ -80,6 +94,19 @@ export function SnippetButton({
       }
     }
   }, [snippet.id, clearLastCopied])
+
+  // Expand + focus/select the label the instant this item was just created
+  // (#35) — new paste-ready content must never sit collapsed and unfocused.
+  useEffect(() => {
+    if (autoFocus) {
+      setExpanded(true)
+      labelRef.current?.focus()
+      labelRef.current?.select()
+      onAutoFocused?.()
+    }
+    // Only re-run when the autoFocus flag itself changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFocus])
 
   function copy(): void {
     void copySnippet(cardId, snippet.id)
@@ -109,54 +136,64 @@ export function SnippetButton({
 
       {/* Header row: reorder grip, drag-out handle, label, copy, expand, delete */}
       <div className="flex items-center gap-2 p-2">
-        <span
+        <button
+          type="button"
           {...sourceHandlers}
-          className="cursor-grab select-none px-1 text-deck-muted active:cursor-grabbing"
-          title="Drag to reorder"
-          aria-hidden="true"
+          onKeyDown={(e) => {
+            // Keyboard reordering (#39): Alt+ArrowUp/Down move this item so the
+            // list is operable without the mouse-only drag. Focus stays on this
+            // grip (SnippetButton is keyed by snippet.id) as the row moves.
+            if (!isReorderKey(e)) return
+            const to = getReorderTargetIndex(e.key, index, count)
+            if (to === null) return
+            e.preventDefault()
+            onReorder(index, to)
+          }}
+          aria-label={`Reorder ${snippet.label || 'untitled paste-ready content'}, item ${index + 1} of ${count}`}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          className="cursor-grab select-none rounded px-1 text-deck-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deck-accent active:cursor-grabbing"
+          title="Drag to reorder (or press Alt+↑ / Alt+↓)"
         >
-          ⠿
-        </span>
+          <GripIcon />
+        </button>
         <span
           draggable
           onDragStart={onDragStartOut}
-          className="cursor-grab select-none rounded bg-deck-panel px-2 py-1 text-xs text-deck-muted active:cursor-grabbing"
+          className="flex cursor-grab select-none items-center gap-1 rounded bg-deck-panel px-2 py-1 text-xs text-deck-muted active:cursor-grabbing"
           title="Drag me into your demo app"
         >
-          {index + 1} ↗
+          {index + 1} <ArrowUpRightIcon />
         </span>
         <input
-          id={contentLabelFieldId(snippet.id)}
           ref={labelRef}
           value={snippet.label}
           onChange={(e) => updateSnippet(cardId, snippet.id, { label: e.target.value })}
-          placeholder={BUILD_LANGUAGE.content.labelPlaceholder}
-          aria-label="Content label"
+          placeholder="Label…"
+          aria-label="Paste-ready content label"
           className="flex-1 bg-transparent text-sm font-medium outline-none"
         />
-        <button
+        <Button
+          variant="primary"
+          size="sm"
+          active={copied}
+          activeTone="success"
           onClick={copy}
-          className={`rounded px-3 py-1 text-sm font-medium transition ${
-            copied
-              ? 'bg-green-600 text-white'
-              : 'bg-deck-accent text-white hover:bg-deck-accentHover'
-          }`}
+          icon={copied ? <CheckIcon /> : undefined}
         >
-          {copied ? 'Copied ✓' : 'Copy'}
-        </button>
-        <button
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+        <IconButton
+          label={expanded ? 'Collapse content' : 'Edit content'}
+          icon={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+          size="sm"
           onClick={() => setExpanded((v) => !v)}
-          className="rounded px-2 py-1 text-sm text-deck-muted transition hover:text-deck-text"
-          title={expanded ? 'Collapse' : 'Edit content'}
-        >
-          {expanded ? '▾' : '▸'}
-        </button>
-        <ConfirmDeleteButton
-          onConfirm={() => removeSnippet(cardId, snippet.id)}
-          label="✕"
-          confirmLabel="Delete?"
-          title={BUILD_LANGUAGE.content.singular + ' — delete'}
-          className="rounded px-1.5 py-1 text-sm text-deck-muted transition hover:text-red-400"
+        />
+        <IconButton
+          label="Delete paste-ready content"
+          icon={<CloseIcon />}
+          size="sm"
+          onClick={() => removeSnippet(cardId, snippet.id)}
+          className="hover:!text-deck-danger"
         />
       </div>
 
@@ -170,9 +207,9 @@ export function SnippetButton({
             return (
               <span
                 key={name}
-                className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] ${
                   isMissing
-                    ? 'bg-amber-500/15 text-amber-500'
+                    ? 'bg-deck-warning/15 text-deck-warning'
                     : 'bg-deck-panel text-deck-muted'
                 }`}
                 title={
@@ -182,7 +219,7 @@ export function SnippetButton({
                 }
               >
                 {name}
-                {isMissing && ' ⚠'}
+                {isMissing && <WarningIcon />}
               </span>
             )
           })}
@@ -195,6 +232,7 @@ export function SnippetButton({
           value={snippet.content}
           onChange={(e) => updateSnippet(cardId, snippet.id, { content: e.target.value })}
           placeholder="The text you paste into your demo app…"
+          aria-label="Paste-ready content"
           rows={4}
           className="w-full resize-y rounded-b-lg border-t border-deck-border bg-deck-panel p-3 font-mono text-sm outline-none placeholder:text-deck-muted"
         />
