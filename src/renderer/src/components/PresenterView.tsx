@@ -92,7 +92,6 @@ function PresenterSnippet({
       </span>
       <span
         className="flex shrink-0 items-center gap-1 text-sm font-semibold uppercase tracking-wide opacity-90"
-        aria-live="polite"
       >
         {copied ? (
           <>

@@ -13,6 +13,7 @@ import {
   isSegmentedNavKey
 } from '../src/renderer/src/lib/ui/segmentedControlNav'
 import { getNextMenuIndex, isMenuNavKey } from '../src/renderer/src/lib/ui/menuNav'
+import { getReorderTargetIndex, isReorderKey } from '../src/renderer/src/lib/ui/listReorder'
 
 describe('ui: cx (className merge)', () => {
   it('joins truthy class names with a single space', () => {
@@ -205,5 +206,35 @@ describe('ui: menu keyboard navigation helpers (#34 Library overflow menu)', () 
 
   it('returns null for an empty menu', () => {
     expect(getNextMenuIndex('ArrowDown', -1, 0)).toBeNull()
+  })
+})
+
+describe('ui: keyboard list-reorder helpers (#39 mouse-free running-order + content reordering)', () => {
+  it('recognizes only Alt+ArrowUp / Alt+ArrowDown as reorder keys', () => {
+    expect(isReorderKey({ key: 'ArrowUp', altKey: true })).toBe(true)
+    expect(isReorderKey({ key: 'ArrowDown', altKey: true })).toBe(true)
+    // Plain arrows (without Alt) are navigation, not reordering — never hijack them.
+    expect(isReorderKey({ key: 'ArrowUp', altKey: false })).toBe(false)
+    expect(isReorderKey({ key: 'ArrowDown', altKey: false })).toBe(false)
+    // Unrelated keys, even with Alt held, are not reorder keys.
+    expect(isReorderKey({ key: 'ArrowLeft', altKey: true })).toBe(false)
+    expect(isReorderKey({ key: 'Enter', altKey: true })).toBe(false)
+  })
+
+  it('moves an item up/down by one, without wrapping at the ends', () => {
+    // From the middle, both directions produce the neighbouring index.
+    expect(getReorderTargetIndex('ArrowUp', 1, 3)).toBe(0)
+    expect(getReorderTargetIndex('ArrowDown', 1, 3)).toBe(2)
+  })
+
+  it('returns null at the boundaries so the first/last item cannot fall off the list', () => {
+    expect(getReorderTargetIndex('ArrowUp', 0, 3)).toBeNull()
+    expect(getReorderTargetIndex('ArrowDown', 2, 3)).toBeNull()
+  })
+
+  it('returns null for an out-of-range index or a non-reorder key', () => {
+    expect(getReorderTargetIndex('ArrowUp', -1, 3)).toBeNull()
+    expect(getReorderTargetIndex('ArrowDown', 3, 3)).toBeNull()
+    expect(getReorderTargetIndex('ArrowLeft', 1, 3)).toBeNull()
   })
 })

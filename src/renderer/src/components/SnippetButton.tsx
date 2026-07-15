@@ -3,6 +3,7 @@ import { useDeckStore } from '../store/deckStore'
 import type { Snippet } from '@shared/types'
 import { classifyVariables, renderSnippet } from '@shared/variables'
 import type { DragSourceHandlers, DropTargetHandlers } from '../hooks/useDragSort'
+import { getReorderTargetIndex, isReorderKey } from '../lib/ui/listReorder'
 import { Button } from './ui/Button'
 import { IconButton } from './ui/IconButton'
 import {
@@ -19,10 +20,14 @@ interface Props {
   cardId: string
   snippet: Snippet
   index: number
+  /** Total items in this card's list, for the reorder position/bounds (#39). */
+  count: number
   /** Drag-source handlers for the reorder grip (from useDragSort). */
   sourceHandlers: DragSourceHandlers
   /** Drop-target handlers for the row body (from useDragSort). */
   targetHandlers: DropTargetHandlers
+  /** Keyboard reorder callback (Alt+↑ / Alt+↓), so reordering isn't mouse-only (#39). */
+  onReorder: (from: number, to: number) => void
   /** Row is the current drop target; render an insertion indicator. */
   dropAbove: boolean
   dropBelow: boolean
@@ -42,7 +47,8 @@ interface Props {
  *  - editable (label + content)
  *  - one-click copy to clipboard (with a "Copied ✓" flash)
  *  - draggable OUT: drag the numbered handle straight into another app's field
- *  - reorderable: drag the dedicated grip (⠿) to sort within the step
+ *  - reorderable: drag the dedicated grip (⠿), or focus it and press
+ *    Alt+↑ / Alt+↓, to sort within the step (#39 keyboard reordering)
  *
  * The two drags are deliberately separate affordances with separate data:
  * the numbered handle emits `text/plain` (external paste target), while the
@@ -53,8 +59,10 @@ export function SnippetButton({
   cardId,
   snippet,
   index,
+  count,
   sourceHandlers,
   targetHandlers,
+  onReorder,
   dropAbove,
   dropBelow,
   dragging,
@@ -128,14 +136,26 @@ export function SnippetButton({
 
       {/* Header row: reorder grip, drag-out handle, label, copy, expand, delete */}
       <div className="flex items-center gap-2 p-2">
-        <span
+        <button
+          type="button"
           {...sourceHandlers}
-          className="cursor-grab select-none px-1 text-deck-muted active:cursor-grabbing"
-          title="Drag to reorder"
-          aria-hidden="true"
+          onKeyDown={(e) => {
+            // Keyboard reordering (#39): Alt+ArrowUp/Down move this item so the
+            // list is operable without the mouse-only drag. Focus stays on this
+            // grip (SnippetButton is keyed by snippet.id) as the row moves.
+            if (!isReorderKey(e)) return
+            const to = getReorderTargetIndex(e.key, index, count)
+            if (to === null) return
+            e.preventDefault()
+            onReorder(index, to)
+          }}
+          aria-label={`Reorder ${snippet.label || 'untitled paste-ready content'}, item ${index + 1} of ${count}`}
+          aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+          className="cursor-grab select-none rounded px-1 text-deck-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-deck-accent active:cursor-grabbing"
+          title="Drag to reorder (or press Alt+↑ / Alt+↓)"
         >
           <GripIcon />
-        </span>
+        </button>
         <span
           draggable
           onDragStart={onDragStartOut}

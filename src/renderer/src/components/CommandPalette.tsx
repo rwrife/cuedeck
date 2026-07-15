@@ -38,6 +38,10 @@ export function CommandPalette(): JSX.Element | null {
 
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
+  // Whatever was focused when the palette opened, so focus is restored there
+  // when it closes (#39) — a keyboard user who opened search with `/` lands
+  // back where they were instead of at the top of the document.
+  const previouslyFocused = useRef<HTMLElement | null>(null)
 
   const results = useMemo(() => searchDeck(deck, query), [deck, query])
 
@@ -83,9 +87,15 @@ export function CommandPalette(): JSX.Element | null {
     }
   }, [])
 
-  // Focus the input each time the palette opens.
+  // Focus the input each time the palette opens, and restore focus to the
+  // previously focused element when it closes (#39 focus restoration).
   useEffect(() => {
-    if (open) inputRef.current?.focus()
+    if (!open) return
+    previouslyFocused.current = document.activeElement as HTMLElement | null
+    inputRef.current?.focus()
+    return () => {
+      previouslyFocused.current?.focus?.()
+    }
   }, [open])
 
   // Keep the selected index in range as the result set changes.

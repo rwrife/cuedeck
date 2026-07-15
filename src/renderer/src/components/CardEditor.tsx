@@ -194,8 +194,10 @@ export function CardEditor({ onAddCard }: Props): JSX.Element {
                 cardId={card.id}
                 snippet={snippet}
                 index={i}
+                count={card.snippets.length}
                 sourceHandlers={getSourceProps(i)}
                 targetHandlers={getTargetProps(i)}
+                onReorder={(from, to) => reorderSnippets(card.id, from, to)}
                 dragging={dragIndex === i}
                 dropAbove={isDropTarget && (dragIndex as number) > i}
                 dropBelow={isDropTarget && (dragIndex as number) < i}
