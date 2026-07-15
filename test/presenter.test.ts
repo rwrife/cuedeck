@@ -4,6 +4,9 @@ import {
   isPresenterToggleKey,
   isPresenting,
   positionLabel,
+  presenterProgress,
+  presenterStepDensity,
+  snippetHotkeyLabel,
   toggleMode
 } from '../src/shared/presenter'
 
@@ -47,6 +50,61 @@ describe('presenter: position label', () => {
 
   it('clamps an out-of-range index into the deck', () => {
     expect(positionLabel(99, 3)).toBe('3 / 3')
+  })
+})
+
+describe('presenter: snippet hotkey label', () => {
+  it('labels the first nine snippets 1–9', () => {
+    expect(snippetHotkeyLabel(0)).toBe('1')
+    expect(snippetHotkeyLabel(4)).toBe('5')
+    expect(snippetHotkeyLabel(8)).toBe('9')
+  })
+
+  it('returns null for the tenth snippet onward (no copy hotkey)', () => {
+    expect(snippetHotkeyLabel(9)).toBeNull()
+    expect(snippetHotkeyLabel(20)).toBeNull()
+  })
+
+  it('returns null for invalid indices', () => {
+    expect(snippetHotkeyLabel(-1)).toBeNull()
+    expect(snippetHotkeyLabel(1.5)).toBeNull()
+  })
+})
+
+describe('presenter: progress fraction', () => {
+  it('advances from the first step to a full bar on the last', () => {
+    expect(presenterProgress(0, 4)).toBeCloseTo(0.25)
+    expect(presenterProgress(1, 4)).toBeCloseTo(0.5)
+    expect(presenterProgress(3, 4)).toBe(1)
+  })
+
+  it('is zero for an empty deck or an unresolved active card', () => {
+    expect(presenterProgress(0, 0)).toBe(0)
+    expect(presenterProgress(-1, 5)).toBe(0)
+  })
+
+  it('clamps an out-of-range index to a full bar', () => {
+    expect(presenterProgress(99, 3)).toBe(1)
+  })
+})
+
+describe('presenter: step density', () => {
+  it('treats an all-but-empty step as sparse', () => {
+    expect(presenterStepDensity({ notesLength: 0, snippetCount: 0 })).toBe('sparse')
+    expect(presenterStepDensity({ notesLength: 40, snippetCount: 1 })).toBe('sparse')
+  })
+
+  it('treats a moderate step as balanced', () => {
+    expect(presenterStepDensity({ notesLength: 200, snippetCount: 2 })).toBe('balanced')
+  })
+
+  it('treats a content-heavy step as full', () => {
+    expect(presenterStepDensity({ notesLength: 900, snippetCount: 3 })).toBe('full')
+    expect(presenterStepDensity({ notesLength: 0, snippetCount: 8 })).toBe('full')
+  })
+
+  it('guards against negative inputs', () => {
+    expect(presenterStepDensity({ notesLength: -100, snippetCount: -5 })).toBe('sparse')
   })
 })
 

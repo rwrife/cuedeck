@@ -42,6 +42,61 @@ export function positionLabel(index: number, total: number): string {
 }
 
 /**
+ * The 1–9 copy-hotkey / number-badge label for the snippet at zero-based
+ * `index`, or `null` when the snippet has no hotkey.
+ *
+ * Only the first nine paste actions get a keyboard shortcut (matching
+ * {@link SNIPPET_HOTKEYS} in `@shared/hotkeys`); the tenth onward — and any
+ * invalid index — return `null` so the Presenter can render a non-numbered
+ * affordance instead of a misleading badge.
+ */
+export function snippetHotkeyLabel(index: number): string | null {
+  if (!Number.isInteger(index) || index < 0 || index >= 9) return null
+  return String(index + 1)
+}
+
+/**
+ * Fraction (0–1) of the way through the deck at the active step, for the
+ * Presenter progress bar.
+ *
+ * `index` is the zero-based active-card index; the bar fills as the presenter
+ * advances, reaching a full `1` on the last step. Returns `0` for an empty
+ * deck (`total <= 0`) or an unresolved active card (`index < 0`), and clamps
+ * an out-of-range index to a full bar so the indicator never overflows.
+ */
+export function presenterProgress(index: number, total: number): number {
+  if (total <= 0 || index < 0) return 0
+  const clamped = Math.min(index, total - 1)
+  return (clamped + 1) / total
+}
+
+/** How much content a Presenter step carries, used to adapt its spacing. */
+export type PresenterDensity = 'sparse' | 'balanced' | 'full'
+
+/**
+ * Classify a Presenter step's content density so the compact window can adapt
+ * its layout: a `'sparse'` step is centered with generous spacing so it reads
+ * as deliberate rather than broken/unfinished, a `'full'` step is top-aligned
+ * and scrolls, and `'balanced'` sits between.
+ *
+ * The weight blends the rendered talking-point length with the number of paste
+ * actions (each paste action is worth roughly a short paragraph of vertical
+ * space). Negative inputs are floored to zero so a malformed step can't skew
+ * the classification.
+ */
+export function presenterStepDensity(input: {
+  notesLength: number
+  snippetCount: number
+}): PresenterDensity {
+  const notes = Math.max(0, input.notesLength)
+  const snippets = Math.max(0, input.snippetCount)
+  const weight = notes + snippets * 120
+  if (weight <= 200) return 'sparse'
+  if (weight >= 800) return 'full'
+  return 'balanced'
+}
+
+/**
  * Decide whether a keyboard event should toggle Presenter Mode.
  *
  * Two ergonomic triggers, matching the issue:
